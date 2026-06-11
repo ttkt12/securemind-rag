@@ -1,0 +1,15 @@
+.env
+*.env
+__pycache__/
+**pycache**/
+*.pyc
+.venv/
+venv/
+vector_db/
+papers/*
+!papers/.gitkeep
+*.pdf
+test_questions.txt
+.DS_Store
+.vscode/
+.idea/
