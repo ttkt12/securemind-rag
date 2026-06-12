@@ -6,6 +6,10 @@ __pycache__/
 .venv/
 venv/
 vector_db/
+sharepoint_downloads/
+token_cache.bin
+*.token
+.agentbase-state.json
 papers/*
 !papers/.gitkeep
 *.pdf

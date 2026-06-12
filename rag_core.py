@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -934,7 +936,15 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
         print(f"     preview: {preview}")
 
     analysis = debug_info.get("analysis")
-    if analysis and analysis.intent == "version_author_mapping":
+    if analysis and analysis.intent in {
+        "version_author_mapping",
+        "versions_count",
+        "versions_list",
+        "version_latest",
+        "author_latest",
+        "author_specific_version",
+        "authors_all",
+    }:
         debug_context = format_context(debug_info["selected_documents"])
         entries = extract_version_history_entries(debug_context)
         pages = []
@@ -942,15 +952,15 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
             page = document.metadata.get("page")
             if isinstance(page, int):
                 pages.append(str(page + 1))
-        preview_entries = [
-            f"{entry['version']} -> {entry.get('author') or 'no author found'}"
-            for entry in entries[:8]
-        ]
-        print("- version-author mapping debug:")
-        print(f"  intent: {analysis.intent}")
-        print(f"  pages: {', '.join(pages) if pages else 'unknown'}")
-        print(f"  parsed entries: {len(entries)}")
-        if preview_entries:
+        if entries:
+            preview_entries = [
+                f"{entry['version']} -> {entry.get('author') or 'no author found'}"
+                for entry in entries[:8]
+            ]
+            print("- version history extraction debug:")
+            print(f"  intent: {analysis.intent}")
+            print(f"  pages: {', '.join(pages) if pages else 'unknown'}")
+            print(f"  parsed entries: {len(entries)}")
             print(f"  preview: {'; '.join(preview_entries)}")
 
     print("- raw semantic candidates:")
@@ -963,6 +973,70 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
 
 def version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
+
+
+def version_part_count(version: str) -> int:
+    return len(version.split("."))
+
+
+def has_clear_version_label(text_before: str) -> bool:
+    folded_before = fold_accents(normalize_for_match(text_before[-60:]))
+    return bool(re.search(r"(?:^|\b)(?:version|phien ban|ver|v)\s*[:#\-]?\s*$", folded_before))
+
+
+def is_false_version_candidate(text_before: str, candidate: str) -> bool:
+    if has_clear_version_label(text_before):
+        return False
+
+    folded_before = fold_accents(normalize_for_match(text_before[-90:]))
+    negative_terms = (
+        "section",
+        "step",
+        "clause",
+        "control",
+        "muc",
+        "dieu",
+        "khoan",
+        "diem",
+        "phan",
+    )
+    if re.search(rf"(?:{'|'.join(negative_terms)})\s*(?:so|number|no\.?)?\s*$", folded_before):
+        return True
+
+    return version_part_count(candidate) > 2
+
+
+def is_likely_version_row_start(context: str, match: re.Match) -> bool:
+    candidate = match.group(0)
+    text_before = context[:match.start()]
+    if is_false_version_candidate(text_before, candidate):
+        return False
+
+    if has_clear_version_label(text_before):
+        return True
+
+    if version_part_count(candidate) > 2:
+        return False
+
+    line_start = context.rfind("\n", 0, match.start()) + 1
+    line_prefix = context[line_start:match.start()]
+    if re.match(r"^\s*(?:[\|\-•*]\s*)?$", line_prefix):
+        return True
+
+    next_text = context[match.end():match.end() + 280]
+    has_date = bool(
+        re.search(
+            r"\b(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4})\b",
+            next_text,
+        )
+    )
+    has_author_like_tail = bool(
+        re.search(
+            r"\b(?:[A-ZÀ-ỴĐ][A-Za-zÀ-ỹĐđ]*|[A-Z]{2,})(?:\s+(?:[A-ZÀ-ỴĐ][A-Za-zÀ-ỹĐđ]*|[A-Z]{2,})){0,5}\b",
+            next_text,
+        )
+    )
+    return has_date and has_author_like_tail
 
 
 def clean_person_name(name: str) -> str:
@@ -1015,6 +1089,7 @@ def extract_author_from_version_segment(segment: str) -> str | None:
 
     date_patterns = [
         rf"\b\d{{1,2}}\s+[A-Za-z]{{3,9}}\s+\d{{4}}\s+({person_token}(?:\s+{person_token}){{0,5}})(?:\s|$)",
+        rf"\b\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}\s+({person_token}(?:\s+{person_token}){{0,5}})(?:\s|$)",
         rf"\b\d{{4}}\s+({person_token}(?:\s+{person_token}){{0,5}})(?:\s|$)",
     ]
 
@@ -1077,7 +1152,11 @@ def version_history_context(context: str) -> str:
 
 def extract_version_history_entries(context: str) -> list[dict]:
     context = version_history_context(context)
-    version_matches = list(re.finditer(r"\b\d+(?:\.\d+){1,2}\b", context))
+    version_matches = [
+        match
+        for match in re.finditer(r"\b\d+(?:\.\d+){1,2}\b", context)
+        if is_likely_version_row_start(context, match)
+    ]
     entries = []
     reviewer = extract_person_after_label(context, "Reviewer")
     approver = extract_person_after_label(context, "Approver")
@@ -1232,7 +1311,10 @@ def answer_version_author_mapping(analysis: QueryAnalysis, context: str) -> str 
 
     lines = []
     for entry in entries:
-        author = entry.get("author") or "không tìm thấy tác giả trong ngữ cảnh truy xuất"
+        author = (
+            entry.get("author")
+            or "chưa ghi nhận tác giả trong phần lịch sử phiên bản được truy xuất"
+        )
         lines.append(f"* Version {entry['version']}: {author}")
 
     return (

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "REPLACE_WITH_TEAMS_BOT_APP_ID",
+  "packageName": "com.securemind.rag",
+  "developer": {
+    "name": "SecureMind",
+    "websiteUrl": "https://example.com",
+    "privacyUrl": "https://example.com/privacy",
+    "termsOfUseUrl": "https://example.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "SecureMind RAG",
+    "full": "SecureMind RAG"
+  },
+  "description": {
+    "short": "Teams chatbot for querying security and compliance documents.",
+    "full": "SecureMind RAG is a Teams chatbot for querying security, compliance, policy, procedure, and ISMS documents."
+  },
+  "accentColor": "#2563EB",
+  "bots": [
+    {
+      "botId": "REPLACE_WITH_TEAMS_BOT_APP_ID",
+      "scopes": [
+        "personal",
+        "team",
+        "groupchat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team",
+            "groupchat"
+          ],
+          "commands": [
+            {
+              "title": "ask",
+              "description": "Ask questions about security and compliance documents"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": []
+}

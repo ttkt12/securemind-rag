@@ -1,5 +1,11 @@
 openai
 python-dotenv
+msal
+requests
+aiohttp
+botbuilder-core
+botbuilder-schema
+numpy<2
 langchain-community
 langchain-huggingface
 langchain-text-splitters
