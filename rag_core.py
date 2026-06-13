@@ -21,6 +21,12 @@ from config import (
     get_api_key,
     make_embeddings,
 )
+from document_intelligence import (
+    classify_chunk_section_types,
+    classify_section_type,
+    find_catalog_candidates,
+    load_document_catalog,
+)
 from langchain_community.vectorstores import FAISS
 from openai import APIStatusError, OpenAI
 
@@ -47,10 +53,351 @@ class QueryAnalysis:
     requested_dates: list[str] = field(default_factory=list)
     requested_count: int | None = None
     intent: str = "lookup_fact"
+    operational_intents: list[str] = field(default_factory=list)
+    process_areas: list[str] = field(default_factory=list)
+    catalog_candidates: list[dict] = field(default_factory=list)
+    document_discovery_mode: bool = False
+    confidence: str = "medium"
     is_follow_up: bool = False
     needs_clarification: bool = False
     clarification_question: str = ""
     expanded_query: str = ""
+
+
+OPERATIONAL_INTENT_KEYWORDS = {
+    "access_request": [
+        "cap quyen",
+        "cap account",
+        "tai khoan",
+        "phan quyen",
+        "quyen truy cap",
+        "mo quyen",
+        "xin quyen",
+        "request quyen",
+        "user access",
+        "access request",
+        "access provisioning",
+        "provisioning",
+        "account provisioning",
+        "new account",
+        "admin access",
+        "permission",
+        "role",
+        "privilege",
+        "system access",
+        "production access",
+    ],
+    "access_review": [
+        "uar",
+        "user access review",
+        "access rights review",
+        "periodic access review",
+        "review quyen",
+        "ra soat quyen",
+        "kiem tra quyen",
+        "dinh ky",
+        "excessive access",
+        "user list review",
+    ],
+    "access_revocation": [
+        "thu hoi quyen",
+        "xoa quyen",
+        "remove access",
+        "revoke access",
+        "disable account",
+        "nghi viec",
+        "resign",
+        "termination",
+        "offboarding",
+        "staff movement",
+        "mover",
+        "leaver",
+    ],
+    "change_management": [
+        "change management",
+        "production change",
+        "system change",
+        "configuration change",
+        "thay doi cau hinh",
+        "thay doi he thong",
+        "deployment",
+        "deploy",
+        "emergency change",
+        "change request",
+        "rollback",
+    ],
+    "incident_management": [
+        "incident",
+        "security incident",
+        "su co",
+        "su co bao mat",
+        "report incident",
+        "bao cao su co",
+        "escalation",
+        "response",
+        "containment",
+        "recovery",
+    ],
+    "business_continuity": [
+        "bcp",
+        "business continuity",
+        "disaster recovery",
+        "drp",
+        "failover",
+        "continuity",
+        "interruption",
+        "disruption",
+        "recovery scenario",
+    ],
+    "logging_monitoring": [
+        "log",
+        "logs",
+        "audit log",
+        "audit logs",
+        "monitoring",
+        "giam sat",
+        "opensearch",
+        "superset",
+        "log retention",
+        "transaction log",
+        "giao dich",
+    ],
+    "data_protection": [
+        "personal data",
+        "pii",
+        "du lieu ca nhan",
+        "data disclosure",
+        "data masking",
+        "encryption",
+        "privacy",
+        "bao mat du lieu",
+    ],
+    "vulnerability_management": [
+        "vulnerability",
+        "patching",
+        "pentest",
+        "penetration test",
+        "security testing",
+        "lo hong",
+        "ban va",
+    ],
+    "policy_lookup": [
+        "tai lieu nao",
+        "o tai lieu nao",
+        "xem o dau",
+        "quy trinh nao",
+        "policy nao",
+        "which document",
+        "where can i find",
+        "what document",
+        "which policy",
+        "which procedure",
+    ],
+    "how_to": [
+        "lam sao",
+        "lam the nao",
+        "can lam gi",
+        "request nhu the nao",
+        "ai approve",
+        "ai phe duyet",
+        "ticket can",
+        "ticket gom",
+        "how to",
+        "what should i do",
+        "what do i need",
+    ],
+}
+
+OPERATIONAL_QUERY_EXPANSIONS = {
+    "access_request": [
+        "cấp quyền",
+        "cấp account",
+        "tài khoản",
+        "quản lý tài khoản",
+        "quy trình quản lý tài khoản",
+        "phân quyền",
+        "user access",
+        "access request",
+        "access provisioning",
+        "account management",
+        "account provisioning",
+        "new account",
+        "quyền truy cập",
+        "admin access",
+        "privilege",
+        "role",
+        "approval",
+        "approver",
+        "ticket",
+        "request",
+        "joiner",
+        "mover",
+        "leaver",
+    ],
+    "access_revocation": [
+        "thu hồi quyền",
+        "thu hồi tài khoản",
+        "revoke access",
+        "disable account",
+        "nghỉ việc",
+        "resign",
+        "termination",
+        "offboarding",
+        "staff movement",
+        "leaver",
+    ],
+    "access_review": [
+        "user access review",
+        "UAR",
+        "review quyền",
+        "rà soát quyền",
+        "đánh giá quyền",
+        "phân quyền",
+        "ma trận phân quyền",
+        "đánh giá ma trận phân quyền",
+        "periodic review",
+        "access rights review",
+        "permission matrix",
+    ],
+    "change_management": [
+        "change management",
+        "quản lý thay đổi",
+        "thay đổi",
+        "thay đổi cấu hình",
+        "cấu hình production",
+        "production change",
+        "deployment",
+        "emergency change",
+        "change request",
+        "approval",
+        "rollback",
+    ],
+    "incident_management": [
+        "incident",
+        "sự cố",
+        "xử lý sự cố",
+        "xử lý sự cố bảo mật",
+        "quản lý sự cố bảo mật",
+        "report incident",
+        "escalation",
+        "response",
+        "containment",
+        "recovery",
+    ],
+    "business_continuity": [
+        "BCP",
+        "business continuity",
+        "kinh doanh liên tục",
+        "hoạt động kinh doanh liên tục",
+        "disaster recovery",
+        "failover",
+        "interruption",
+        "scenario",
+    ],
+    "logging_monitoring": [
+        "logs",
+        "log giao dịch",
+        "nhật ký",
+        "ghi nhật ký",
+        "giám sát",
+        "giám sát bảo mật",
+        "audit logs",
+        "monitoring",
+        "OpenSearch",
+        "Superset",
+        "log retention",
+    ],
+    "data_protection": [
+        "personal data",
+        "PII",
+        "data disclosure",
+        "data masking",
+        "encryption",
+        "privacy",
+    ],
+    "vulnerability_management": [
+        "vulnerability",
+        "patching",
+        "VA",
+        "pentest",
+        "security testing",
+    ],
+    "policy_lookup": [
+        "document",
+        "policy",
+        "procedure",
+        "standard",
+        "tài liệu",
+        "chính sách",
+        "quy trình",
+        "tiêu chuẩn",
+    ],
+    "how_to": [
+        "procedure",
+        "process",
+        "approval",
+        "owner",
+        "PIC",
+        "steps",
+        "ticket",
+        "quy trình",
+        "phê duyệt",
+        "các bước",
+    ],
+}
+
+OPERATIONAL_PRIMARY_INTENTS = [
+    "access_review",
+    "access_revocation",
+    "access_request",
+    "change_management",
+    "incident_management",
+    "business_continuity",
+    "logging_monitoring",
+    "data_protection",
+    "vulnerability_management",
+    "policy_lookup",
+    "how_to",
+]
+
+OPERATIONAL_META_INTENTS = {"policy_lookup", "how_to"}
+
+OPERATIONAL_SOURCE_TERMS = [
+    "account",
+    "access",
+    "tai khoan",
+    "phan quyen",
+    "user",
+    "change",
+    "incident",
+    "continuity",
+    "bcp",
+    "logging",
+    "monitoring",
+    "vulnerability",
+    "data",
+    "security",
+]
+
+INTENT_SECTION_PRIORITIES = {
+    "access_request": ["procedure_steps", "approval", "roles_responsibilities"],
+    "access_review": ["monitoring_review", "procedure_steps", "roles_responsibilities"],
+    "access_revocation": ["procedure_steps", "approval", "roles_responsibilities"],
+    "change_management": ["procedure_steps", "approval", "roles_responsibilities"],
+    "incident_management": ["procedure_steps", "roles_responsibilities", "monitoring_review"],
+    "business_continuity": ["scope", "appendix", "procedure_steps", "roles_responsibilities"],
+    "logging_monitoring": ["scope", "monitoring_review", "procedure_steps"],
+    "data_protection": ["scope", "procedure_steps", "roles_responsibilities"],
+    "vulnerability_management": ["procedure_steps", "monitoring_review", "evidence_record"],
+    "policy_lookup": ["scope", "purpose", "procedure_steps"],
+    "how_to": ["procedure_steps", "approval", "roles_responsibilities"],
+    "version_author_mapping": ["version_control"],
+    "versions_count": ["version_control"],
+    "versions_list": ["version_control"],
+    "version_latest": ["version_control"],
+    "find_responsibility": ["roles_responsibilities"],
+    "explain_process": ["procedure_steps"],
+}
 
 
 def make_client() -> OpenAI:
@@ -89,9 +436,11 @@ def format_context(documents) -> str:
         source = Path(document.metadata.get("source", "unknown")).name
         page = document.metadata.get("page")
         page_label = f", page {page + 1}" if isinstance(page, int) else ""
+        document_code = document.metadata.get("document_code") or extract_document_code_from_source(source)
+        code_label = f"\nDocument code: {document_code}" if document_code else ""
         content = document.page_content[:remaining_chars]
         remaining_chars -= len(content)
-        context_parts.append(f"[{index}] Source: {source}{page_label}\n{content}")
+        context_parts.append(f"[{index}] Source: {source}{page_label}{code_label}\n{content}")
 
     return "\n\n".join(context_parts)
 
@@ -102,6 +451,7 @@ def normalize_for_match(text: str) -> str:
 
 
 def fold_accents(text: str) -> str:
+    text = str(text or "").replace("đ", "d").replace("Đ", "D")
     normalized = unicodedata.normalize("NFD", str(text or ""))
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
@@ -202,7 +552,7 @@ def is_follow_up_question(question: str) -> bool:
 
 def has_count_terms(text: str) -> bool:
     folded_text = fold_accents(normalize_for_match(text))
-    return any(term in folded_text for term in ("may", "bao nhieu", "how many", "count"))
+    return any(term in folded_text for term in ("bao nhieu", "how many", "so luong")) or bool(re.search(r"\bcount\b", folded_text))
 
 
 def has_list_all_terms(text: str) -> bool:
@@ -215,7 +565,7 @@ def has_list_all_terms(text: str) -> bool:
 
 def has_version_terms(text: str) -> bool:
     folded_text = fold_accents(normalize_for_match(text))
-    return any(term in folded_text for term in ("phien ban", "version", "ver", " v"))
+    return any(term in folded_text for term in ("phien ban", "version", "ver")) or bool(re.search(r"\bv\s*\d", folded_text))
 
 
 def has_version_author_mapping_terms(text: str) -> bool:
@@ -261,6 +611,92 @@ def is_author_intent(question: str) -> bool:
     return bool(re.search(r"t.?c\s+gi", folded_question))
 
 
+def extract_document_code_from_source(source: str) -> str:
+    codes = extract_document_codes(Path(str(source or "")).name.upper())
+    return codes[0] if codes else ""
+
+
+def detect_document_discovery_mode(question: str) -> bool:
+    folded_question = fold_accents(normalize_for_match(question))
+    return any(term in folded_question for term in OPERATIONAL_INTENT_KEYWORDS["policy_lookup"])
+
+
+def detect_process_areas_from_intents(intents: list[str]) -> list[str]:
+    intent_to_area = {
+        "access_request": "access_request",
+        "access_review": "access_review",
+        "access_revocation": "access_revocation",
+        "change_management": "change_management",
+        "incident_management": "incident_management",
+        "business_continuity": "business_continuity",
+        "logging_monitoring": "logging_monitoring",
+        "data_protection": "data_protection",
+        "vulnerability_management": "vulnerability_management",
+    }
+    areas = [intent_to_area[intent] for intent in intents if intent in intent_to_area]
+    return list(dict.fromkeys(areas))
+
+
+def detect_operational_intents(question: str) -> list[str]:
+    folded_question = fold_accents(normalize_for_match(question))
+    intents = []
+    for intent in OPERATIONAL_PRIMARY_INTENTS:
+        keywords = OPERATIONAL_INTENT_KEYWORDS.get(intent, [])
+        if any(keyword in folded_question for keyword in keywords):
+            intents.append(intent)
+
+    if "policy_lookup" in intents and len(intents) > 1:
+        intents.append(intents.pop(intents.index("policy_lookup")))
+    if "how_to" in intents and len(intents) > 1:
+        intents.append(intents.pop(intents.index("how_to")))
+
+    return list(dict.fromkeys(intents))
+
+
+def primary_operational_intent(analysis: QueryAnalysis) -> str | None:
+    for intent in OPERATIONAL_PRIMARY_INTENTS:
+        if intent in analysis.operational_intents:
+            return intent
+    return analysis.operational_intents[0] if analysis.operational_intents else None
+
+
+def operational_keywords_from_analysis(analysis: QueryAnalysis) -> list[str]:
+    keywords = []
+    specific_intents = [
+        intent for intent in analysis.operational_intents if intent not in OPERATIONAL_META_INTENTS
+    ]
+    intents_to_expand = specific_intents or analysis.operational_intents
+    for intent in intents_to_expand:
+        keywords.extend(OPERATIONAL_QUERY_EXPANSIONS.get(intent, []))
+        keywords.extend(OPERATIONAL_INTENT_KEYWORDS.get(intent, []))
+    if analysis.document_discovery_mode and not specific_intents:
+        keywords.extend(OPERATIONAL_QUERY_EXPANSIONS["policy_lookup"])
+
+    return list(dict.fromkeys(keywords))
+
+
+def relevant_section_types(analysis: QueryAnalysis) -> list[str]:
+    section_types = []
+    if "scope" in analysis.requested_sections:
+        section_types.append("scope")
+    if "purpose" in analysis.requested_sections:
+        section_types.extend(["purpose", "objective"])
+    if "responsibility" in analysis.requested_sections or "owner" in analysis.requested_sections:
+        section_types.append("roles_responsibilities")
+    if "approval" in analysis.requested_sections or "approver" in analysis.requested_roles:
+        section_types.append("approval")
+    if "process" in analysis.requested_sections:
+        section_types.append("procedure_steps")
+    if "update_history" in analysis.requested_sections or analysis.requested_versions:
+        section_types.append("version_control")
+
+    section_types.extend(INTENT_SECTION_PRIORITIES.get(analysis.intent, []))
+    for intent in analysis.operational_intents:
+        section_types.extend(INTENT_SECTION_PRIORITIES.get(intent, []))
+
+    return list(dict.fromkeys(section_types))
+
+
 def expand_query(question: str, analysis: QueryAnalysis | None = None) -> str:
     folded_question = fold_accents(normalize_for_match(question))
     expansions = []
@@ -268,6 +704,7 @@ def expand_query(question: str, analysis: QueryAnalysis | None = None) -> str:
     sections = analysis.requested_sections if analysis else detect_requested_sections(question)
     versions = analysis.requested_versions if analysis else extract_requested_versions(question)
     document_codes = analysis.document_codes if analysis else extract_document_codes(question)
+    operational_intents = analysis.operational_intents if analysis else detect_operational_intents(question)
 
     section_expansions = {
         "scope": ["scope", "phạm vi áp dụng", "phạm vi"],
@@ -339,6 +776,16 @@ def expand_query(question: str, analysis: QueryAnalysis | None = None) -> str:
         )
     if analysis and analysis.intent in {"versions_count", "versions_list"}:
         expansions.extend(["các phiên bản", "danh sách phiên bản", "version history"])
+
+    specific_operational_intents = [
+        intent for intent in operational_intents if intent not in OPERATIONAL_META_INTENTS
+    ]
+    intents_to_expand = specific_operational_intents or operational_intents
+    for intent in intents_to_expand:
+        expansions.extend(OPERATIONAL_QUERY_EXPANSIONS.get(intent, []))
+        expansions.extend(OPERATIONAL_INTENT_KEYWORDS.get(intent, []))
+    if analysis and analysis.document_discovery_mode and not specific_operational_intents:
+        expansions.extend(OPERATIONAL_QUERY_EXPANSIONS["policy_lookup"])
 
     if is_author_intent(question):
         expansions.extend(
@@ -471,6 +918,7 @@ def section_keywords_from_analysis(analysis: QueryAnalysis) -> list[str]:
             ]
         )
 
+    keywords.extend(operational_keywords_from_analysis(analysis))
     return list(dict.fromkeys(keywords))
 
 
@@ -492,6 +940,10 @@ def classify_intent(analysis: QueryAnalysis) -> str:
     list_all_requested = has_list_all_terms(analysis.raw_question)
     count_requested = has_count_terms(analysis.raw_question)
     mapping_requested = has_version_author_mapping_terms(analysis.raw_question)
+    operational_intent = primary_operational_intent(analysis)
+
+    if operational_intent and not analysis.requested_versions:
+        return operational_intent
 
     if version_requested and author_requested and mapping_requested:
         return "version_author_mapping"
@@ -507,6 +959,9 @@ def classify_intent(analysis: QueryAnalysis) -> str:
         return "author_latest"
     if has_latest_terms(analysis.raw_question) and version_requested:
         return "version_latest"
+
+    if operational_intent:
+        return operational_intent
 
     if analysis.requested_roles or "update_history" in analysis.requested_sections or analysis.requested_versions:
         return "find_version_info"
@@ -559,6 +1014,9 @@ def analyze_question(question: str, conversation_state: dict | None = None) -> Q
     requested_count = detect_requested_count(question)
     requested_entities = detect_requested_entities(question)
     is_follow_up = is_follow_up_question(question)
+    operational_intents = detect_operational_intents(question)
+    process_areas = detect_process_areas_from_intents(operational_intents)
+    document_discovery_mode = detect_document_discovery_mode(question)
 
     if not document_codes and conversation_state:
         last_codes = conversation_state.get("last_document_codes") or []
@@ -580,6 +1038,9 @@ def analyze_question(question: str, conversation_state: dict | None = None) -> Q
         requested_roles=requested_roles,
         requested_dates=requested_dates,
         requested_count=requested_count,
+        operational_intents=operational_intents,
+        process_areas=process_areas,
+        document_discovery_mode=document_discovery_mode,
         is_follow_up=is_follow_up,
     )
     analysis.intent = classify_intent(analysis)
@@ -591,7 +1052,12 @@ def analyze_question(question: str, conversation_state: dict | None = None) -> Q
         or requested_entities
         or any(term in fold_accents(normalized_question) for term in ("cai nay", "quy trinh nay", "tai lieu nay", "this document", "this procedure"))
     )
-    if not analysis.document_codes and requires_document_context:
+    if (
+        not analysis.document_codes
+        and requires_document_context
+        and not analysis.operational_intents
+        and not analysis.document_discovery_mode
+    ):
         analysis.needs_clarification = True
         analysis.intent = "ambiguous_follow_up" if is_follow_up else analysis.intent
         analysis.clarification_question = build_clarification_question(analysis)
@@ -601,6 +1067,7 @@ def analyze_question(question: str, conversation_state: dict | None = None) -> Q
 
 
 def decide_retrieval_strategy(analysis: QueryAnalysis) -> dict:
+    operational_question = bool(analysis.operational_intents or analysis.document_discovery_mode)
     exact_constraints = bool(
         analysis.document_codes
         or analysis.requested_versions
@@ -612,14 +1079,16 @@ def decide_retrieval_strategy(analysis: QueryAnalysis) -> dict:
     keyword_limit = min(RETRIEVAL_K, 3 if exact_constraints else RETRIEVAL_K)
     if analysis.intent == "version_author_mapping":
         keyword_limit = max(keyword_limit, 3)
+    if operational_question:
+        keyword_limit = max(keyword_limit, RETRIEVAL_K, 4)
 
     return {
-        "use_keyword": exact_constraints,
+        "use_keyword": exact_constraints or operational_question,
         "use_semantic": True,
         "filter_document_code": bool(analysis.document_codes),
         "prefer_exact_constraints": exact_constraints,
         "keyword_limit": keyword_limit,
-        "fetch_k": RETRIEVAL_FETCH_K,
+        "fetch_k": max(RETRIEVAL_FETCH_K, 40) if operational_question else RETRIEVAL_FETCH_K,
     }
 
 
@@ -737,6 +1206,9 @@ def author_keyword_rank_for_document(document) -> int:
 def format_retrieval_score(document) -> str:
     method = document.metadata.get("retrieval_method")
     score = document.metadata.get("retrieval_score")
+    if method == "catalog":
+        section_type = document.metadata.get("section_type")
+        return f"catalog/{section_type}" if section_type else "catalog"
     if method == "keyword":
         keyword_rank = document.metadata.get("keyword_rank")
         if keyword_rank == 0:
@@ -770,10 +1242,11 @@ def keyword_search_documents(
         if document_codes and not document_matches_code(document, document_codes):
             continue
 
+        source_name = document_source_name(document)
         matched_keywords = [
             keyword
             for keyword in keywords_to_match
-            if contains_text(document.page_content, keyword)
+            if contains_text(document.page_content, keyword) or contains_text(source_name, keyword)
         ]
         if not matched_keywords:
             continue
@@ -789,6 +1262,9 @@ def keyword_search_documents(
         selected_document.metadata["retrieval_method"] = "keyword"
         selected_document.metadata["keyword_rank"] = keyword_rank
         selected_document.metadata["matched_keywords"] = matched_keywords
+        selected_document.metadata["document_code"] = extract_document_code_from_source(source_name)
+        selected_document.metadata["section_type"] = classify_section_type(document.page_content)
+        selected_document.metadata["section_types"] = classify_chunk_section_types(document.page_content)
         code_priority = 0 if document_codes and document_matches_code(document, document_codes) else 1
         toc_priority = 1 if looks_like_table_of_contents(document) else 0
         page = selected_document.metadata.get("page")
@@ -816,8 +1292,109 @@ def keyword_density(document, keywords: list[str]) -> int:
     return sum(1 for keyword in keywords if contains_text(document.page_content, keyword))
 
 
+def candidate_matches_document(document, candidate: dict) -> bool:
+    source_name = document_source_name(document)
+    candidate_file = candidate.get("file_name", "")
+    candidate_code = candidate.get("document_code", "")
+    if candidate_file and source_name == candidate_file:
+        return True
+    if candidate_code and candidate_code in source_name.upper():
+        return True
+    return False
+
+
+def catalog_priority(document, analysis: QueryAnalysis) -> int:
+    if not analysis.catalog_candidates:
+        return 1
+    for index, candidate in enumerate(analysis.catalog_candidates):
+        if candidate_matches_document(document, candidate):
+            return index
+    return len(analysis.catalog_candidates) + 1
+
+
+def section_type_priority(document, analysis: QueryAnalysis) -> int:
+    desired_sections = relevant_section_types(analysis)
+    if not desired_sections:
+        return 0
+
+    section_types = document.metadata.get("section_types")
+    if not section_types:
+        section_types = classify_chunk_section_types(document.page_content)
+    return 0 if any(section in desired_sections for section in section_types) else 1
+
+
+def catalog_search_documents(
+    vector_store,
+    catalog_candidates: list[dict],
+    analysis: QueryAnalysis,
+    limit: int = 4,
+) -> list:
+    if not catalog_candidates:
+        return []
+
+    keywords = operational_keywords_from_analysis(analysis) + section_keywords_from_analysis(analysis)
+    desired_sections = relevant_section_types(analysis)
+    matches = []
+    for document in vector_store.docstore._dict.values():
+        candidate_index = None
+        candidate = None
+        for index, item in enumerate(catalog_candidates):
+            if candidate_matches_document(document, item):
+                candidate_index = index
+                candidate = item
+                break
+        if candidate is None:
+            continue
+
+        section_types = classify_chunk_section_types(document.page_content)
+        section_hit = any(section in desired_sections for section in section_types) if desired_sections else False
+        density = keyword_density(document, keywords)
+        source_name = document_source_name(document)
+        page = document.metadata.get("page")
+        page_priority = page if isinstance(page, int) else 999999
+        selected_document = deepcopy(document)
+        selected_document.metadata = dict(selected_document.metadata)
+        selected_document.metadata["retrieval_score"] = "catalog"
+        selected_document.metadata["retrieval_method"] = "catalog"
+        selected_document.metadata["catalog_rank"] = candidate_index
+        selected_document.metadata["document_code"] = candidate.get("document_code") or extract_document_code_from_source(source_name)
+        selected_document.metadata["process_area"] = candidate.get("process_area")
+        selected_document.metadata["section_type"] = section_types[0] if section_types else "unknown"
+        selected_document.metadata["section_types"] = section_types
+        matches.append(
+            (
+                candidate_index,
+                0 if section_hit else 1,
+                -density,
+                page_priority,
+                selected_document,
+            )
+        )
+
+    matches.sort(key=lambda item: item[:4])
+    return [item[4] for item in matches[:limit]]
+
+
+def document_operational_priority(document, analysis: QueryAnalysis) -> int:
+    if not analysis.operational_intents and not analysis.document_discovery_mode:
+        return 0
+
+    source = fold_accents(normalize_for_match(document_source_name(document)))
+    source_terms = OPERATIONAL_SOURCE_TERMS + [
+        fold_accents(normalize_for_match(term))
+        for term in operational_keywords_from_analysis(analysis)
+        if len(term.split()) <= 3
+    ]
+    if any(term and term in source for term in source_terms):
+        return 0
+    if keyword_density(document, operational_keywords_from_analysis(analysis)) > 0:
+        return 1
+    return 2
+
+
 def rank_evidence(documents: list, analysis: QueryAnalysis) -> list:
     section_keywords = section_keywords_from_analysis(analysis)
+    operational_keywords = operational_keywords_from_analysis(analysis)
 
     def sort_key(document):
         source = document_source_name(document).upper()
@@ -828,21 +1405,29 @@ def rank_evidence(documents: list, analysis: QueryAnalysis) -> list:
         role_match = 0 if not analysis.requested_roles or document_has_any_keyword(document, section_keywords) else 1
         section_match = 0 if not analysis.requested_sections or document_has_any_keyword(document, section_keywords) else 1
         toc_penalty = 1 if looks_like_table_of_contents(document) else 0
-        method_priority = 0 if document.metadata.get("retrieval_method") == "keyword" else 1
+        method_priority = 0 if document.metadata.get("retrieval_method") in {"catalog", "keyword"} else 1
         keyword_rank = document.metadata.get("keyword_rank")
         keyword_rank = keyword_rank if isinstance(keyword_rank, int) else 4
         score = document.metadata.get("retrieval_score")
         semantic_score = score if isinstance(score, float) else 0.0
         density = -keyword_density(document, section_keywords)
+        catalog_match_priority = catalog_priority(document, analysis)
+        section_priority = section_type_priority(document, analysis)
+        operational_priority = document_operational_priority(document, analysis)
+        operational_density = -keyword_density(document, operational_keywords)
         source_name = document_source_name(document) if not analysis.document_codes else ""
         return (
             exact_document,
+            catalog_match_priority,
+            section_priority,
+            operational_priority,
             version_match,
             role_match,
             section_match,
             method_priority,
             keyword_rank,
             toc_penalty,
+            operational_density,
             density,
             semantic_score,
             page_priority,
@@ -852,13 +1437,81 @@ def rank_evidence(documents: list, analysis: QueryAnalysis) -> list:
     return sorted(documents, key=sort_key)
 
 
+def estimate_retrieval_confidence(documents: list, analysis: QueryAnalysis) -> str:
+    if not documents:
+        return "low"
+
+    section_keywords = section_keywords_from_analysis(analysis)
+    operational_keywords = operational_keywords_from_analysis(analysis)
+    has_exact_document = bool(
+        analysis.document_codes
+        and any(document_matches_code(document, analysis.document_codes) for document in documents)
+    )
+    has_exact_section = any(
+        document.metadata.get("keyword_rank") == 0
+        or (section_keywords and document_has_any_keyword(document, section_keywords))
+        for document in documents
+    )
+    has_operational_signal = any(
+        document_operational_priority(document, analysis) <= 1
+        or (operational_keywords and keyword_density(document, operational_keywords) > 0)
+        for document in documents
+    )
+
+    if analysis.document_codes and has_exact_document and (has_exact_section or not section_keywords):
+        return "high"
+    if section_keywords and has_exact_section and not looks_like_table_of_contents(documents[0]):
+        return "high"
+    if analysis.operational_intents or analysis.document_discovery_mode:
+        if has_operational_signal and not looks_like_table_of_contents(documents[0]):
+            return "medium"
+        return "low"
+    return "medium"
+
+
+def build_operational_prompt_hint(analysis: QueryAnalysis) -> str:
+    if not analysis.operational_intents and not analysis.document_discovery_mode:
+        return ""
+
+    intents = ", ".join(analysis.operational_intents or [analysis.intent])
+    discovery = "yes" if analysis.document_discovery_mode else "no"
+    candidate_lines = []
+    for index, candidate in enumerate(analysis.catalog_candidates[:5], start=1):
+        code = candidate.get("document_code") or "no-code"
+        title = candidate.get("document_title") or candidate.get("file_name")
+        area = candidate.get("process_area") or "unknown"
+        sections = ", ".join((candidate.get("key_sections") or [])[:3])
+        candidate_lines.append(f"{index}. {code} - {title} | process area: {area} | sections: {sections}")
+    candidates_text = "\n".join(candidate_lines) if candidate_lines else "No catalog candidates found."
+    return (
+        "Internal retrieval guidance:\n"
+        f"- detected intent: {intents}\n"
+        f"- detected process areas: {', '.join(analysis.process_areas) if analysis.process_areas else 'unknown'}\n"
+        f"- document discovery mode: {discovery}\n"
+        f"- confidence: {analysis.confidence}\n"
+        f"- catalog candidates:\n{candidates_text}\n"
+        "- Use confidence internally only; do not print the label.\n"
+        "- If confidence is high, answer directly from the documents.\n"
+        "- If confidence is medium, phrase the answer as: tài liệu liên quan nhiều nhất là...\n"
+        "- If confidence is low, say: Mình chưa tìm thấy câu trả lời trực tiếp, nhưng có tài liệu liên quan...\n"
+        "- For practical or which-document questions, start with recommended document candidates, then summarize what to check or do.\n"
+    )
+
+
 def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | None = None) -> tuple[list, list, dict]:
     analysis = analysis or analyze_question(question)
     strategy = decide_retrieval_strategy(analysis)
+    catalog = load_document_catalog()
+    analysis.catalog_candidates = find_catalog_candidates(question, catalog, limit=6) if catalog else []
     document_codes = analysis.document_codes
     section_keywords = section_keywords_from_analysis(analysis)
     expanded_query = analysis.expanded_query
-    exact_question = bool(document_codes or section_keywords or analysis.requested_versions or analysis.requested_entities)
+    exact_question = bool(
+        document_codes
+        or analysis.requested_versions
+        or analysis.requested_entities
+        or (analysis.requested_sections and not analysis.operational_intents)
+    )
     keyword_limit = strategy["keyword_limit"]
 
     keyword_documents = keyword_search_documents(
@@ -867,6 +1520,12 @@ def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | No
         section_keywords,
         limit=keyword_limit,
     ) if strategy["use_keyword"] else []
+    catalog_documents = catalog_search_documents(
+        vector_store,
+        analysis.catalog_candidates,
+        analysis,
+        limit=max(RETRIEVAL_K, 4),
+    )
     raw_results = vector_store.similarity_search_with_score(
         expanded_query,
         k=strategy["fetch_k"],
@@ -887,12 +1546,19 @@ def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | No
         selected_document.metadata = dict(selected_document.metadata)
         selected_document.metadata["retrieval_score"] = score
         selected_document.metadata["retrieval_method"] = "semantic"
+        selected_document.metadata["document_code"] = extract_document_code_from_source(document_source_name(document))
+        selected_document.metadata["section_type"] = classify_section_type(document.page_content)
+        selected_document.metadata["section_types"] = classify_chunk_section_types(document.page_content)
         semantic_documents.append(selected_document)
 
-    combined_candidates = rank_evidence(keyword_documents + semantic_documents, analysis)
+    combined_candidates = rank_evidence(catalog_documents + keyword_documents + semantic_documents, analysis)
     combined_documents = []
     seen_keys = set()
-    result_limit = max(RETRIEVAL_K, 3) if analysis.intent == "version_author_mapping" else RETRIEVAL_K
+    result_limit = max(RETRIEVAL_K, 4) if (analysis.operational_intents or analysis.document_discovery_mode) else RETRIEVAL_K
+    if analysis.intent == "version_author_mapping":
+        result_limit = max(result_limit, 3)
+    if analysis.catalog_candidates:
+        result_limit = max(result_limit, 5)
     for document in combined_candidates:
         key = document_key(document)
         if key in seen_keys:
@@ -903,10 +1569,15 @@ def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | No
         if len(combined_documents) >= result_limit:
             break
 
+    analysis.confidence = estimate_retrieval_confidence(combined_documents, analysis)
     debug_info = {
         "expanded_query": expanded_query,
         "document_codes": document_codes,
         "section_keywords": section_keywords,
+        "operational_intents": analysis.operational_intents,
+        "document_discovery_mode": analysis.document_discovery_mode,
+        "confidence": analysis.confidence,
+        "catalog_candidates": analysis.catalog_candidates,
         "analysis": analysis,
         "strategy": strategy,
         "selected_documents": combined_documents,
@@ -923,7 +1594,18 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
     print(f"- expanded query: {debug_info['expanded_query']}")
     print(f"- document codes: {debug_info['document_codes']}")
     print(f"- section keywords: {debug_info['section_keywords']}")
+    print(f"- operational intents: {debug_info.get('operational_intents', [])}")
+    print(f"- document discovery mode: {debug_info.get('document_discovery_mode', False)}")
+    print(f"- confidence: {debug_info.get('confidence', 'medium')}")
     print(f"- threshold: {MIN_RELEVANCE_SCORE}")
+    catalog_candidates = debug_info.get("catalog_candidates", [])
+    if catalog_candidates:
+        print("- catalog candidates:")
+        for candidate in catalog_candidates[:5]:
+            label = candidate.get("document_code") or candidate.get("file_name")
+            title = candidate.get("document_title")
+            score = candidate.get("catalog_score")
+            print(f"  - {label} | {title} | catalog score: {score}")
 
     print("- selected documents:")
     for index, document in enumerate(debug_info["selected_documents"], start=1):
@@ -1395,6 +2077,8 @@ def build_structured_answer(analysis: QueryAnalysis, context: str) -> str | None
 def has_sufficient_evidence(context: str, analysis: QueryAnalysis) -> bool:
     if analysis.document_codes and not any(contains_text(context, code) for code in analysis.document_codes):
         return False
+    if analysis.operational_intents or analysis.document_discovery_mode:
+        return bool(context.strip())
     if analysis.requested_versions and not any(contains_text(context, version) for version in analysis.requested_versions):
         return False
 
@@ -1429,6 +2113,8 @@ def validate_answer(answer: str, analysis: QueryAnalysis, documents: list) -> bo
         source_text = " ".join(document_source_name(document).upper() for document in documents)
         if not any(code in source_text for code in analysis.document_codes):
             return False
+    if analysis.operational_intents or analysis.document_discovery_mode:
+        return bool(answer.strip())
 
     folded_answer = fold_accents(normalize_for_match(answer))
     if analysis.requested_versions:
@@ -1496,7 +2182,16 @@ def filter_supporting_documents(documents: list, analysis: QueryAnalysis) -> lis
     return supporting_documents or documents
 
 
-def call_llm(client: OpenAI, question: str, context: str, concise_retry: bool = False):
+def call_llm(
+    client: OpenAI,
+    question: str,
+    context: str,
+    concise_retry: bool = False,
+    analysis: QueryAnalysis | None = None,
+):
+    operational_hint = build_operational_prompt_hint(analysis) if analysis else ""
+    if operational_hint:
+        context = f"{operational_hint}\n{context}"
     messages = [
         {
             "role": "system",
@@ -1562,15 +2257,17 @@ def answer_question(
     if not has_sufficient_evidence(context, analysis):
         return NO_RELEVANT_CONTEXT_ANSWER, relevant_documents, None
 
-    deterministic_answer = build_structured_answer(analysis, context)
+    deterministic_answer = None
+    if not analysis.operational_intents and not analysis.document_discovery_mode:
+        deterministic_answer = build_structured_answer(analysis, context)
     if deterministic_answer:
         if validate_answer(deterministic_answer, analysis, relevant_documents):
             return deterministic_answer, filter_supporting_documents(relevant_documents, analysis), None
 
-    response = call_llm(client, question, context, concise_retry=False)
+    response = call_llm(client, question, context, concise_retry=False, analysis=analysis)
     answer = (response.choices[0].message.content or "").strip()
     if not answer:
-        response = call_llm(client, question, context, concise_retry=True)
+        response = call_llm(client, question, context, concise_retry=True, analysis=analysis)
         answer = (response.choices[0].message.content or "").strip()
 
     if not answer:
@@ -1591,8 +2288,19 @@ def build_system_prompt(concise_retry: bool = False) -> str:
             "được cung cấp. Trả lời ngắn gọn bằng tiếng Việt."
         )
 
+    grc_navigation_prompt = (
+        "You are an internal GRC/ISMS procedure navigator. Users may ask practical "
+        "questions without knowing exact document codes. Your job is to map the "
+        "question to the most relevant indexed document, explain what the user "
+        "should check or do, and cite sources. Never invent approval flows, ticket "
+        "fields, owners, SLAs, or document codes. If the documents only partially "
+        "support the answer, state the limitation clearly. For operational how-to "
+        "or which-document questions, recommend document candidates first, then "
+        "summarize the relevant procedure and source page. "
+    )
+
     if ANSWER_LANGUAGE == "vi":
-        return (
+        return grc_navigation_prompt + (
             "Bạn là trợ lý RAG cho các tài liệu bảo mật, tuân thủ, chính sách, "
             "quy trình và tiêu chuẩn. Chỉ trả lời từ ngữ cảnh tài liệu được "
             "cung cấp. Không suy đoán và không bổ sung kiến thức bên ngoài. "
@@ -1616,7 +2324,7 @@ def build_system_prompt(concise_retry: bool = False) -> str:
             "thích quá trình suy luận hoặc chain-of-thought."
         )
 
-    return (
+    return grc_navigation_prompt + (
         "You are a helpful RAG assistant. Answer using only the provided "
         "document context. If the answer is not in the context, say you do not "
         "know. Keep the final answer concise. Start immediately with the final "

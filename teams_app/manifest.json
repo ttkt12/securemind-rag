@@ -2,13 +2,13 @@
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
   "version": "1.0.0",
-  "id": "REPLACE_WITH_TEAMS_BOT_APP_ID",
+  "id": "92826e26-5c20-462e-8139-7e480672b5e5",
   "packageName": "com.securemind.rag",
   "developer": {
     "name": "SecureMind",
-    "websiteUrl": "https://example.com",
-    "privacyUrl": "https://example.com/privacy",
-    "termsOfUseUrl": "https://example.com/terms"
+    "websiteUrl": "https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn",
+    "privacyUrl": "https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn",
+    "termsOfUseUrl": "https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn"
   },
   "icons": {
     "color": "color.png",
@@ -20,25 +20,21 @@
   },
   "description": {
     "short": "Teams chatbot for querying security and compliance documents.",
-    "full": "SecureMind RAG is a Teams chatbot for querying security, compliance, policy, procedure, and ISMS documents."
+    "full": "SecureMind RAG is a Teams chatbot for querying security, compliance, ISMS, policy, procedure, and governance documents."
   },
   "accentColor": "#2563EB",
   "bots": [
     {
-      "botId": "REPLACE_WITH_TEAMS_BOT_APP_ID",
+      "botId": "92826e26-5c20-462e-8139-7e480672b5e5",
       "scopes": [
-        "personal",
-        "team",
-        "groupchat"
+        "personal"
       ],
       "supportsFiles": false,
       "isNotificationOnly": false,
       "commandLists": [
         {
           "scopes": [
-            "personal",
-            "team",
-            "groupchat"
+            "personal"
           ],
           "commands": [
             {
@@ -54,5 +50,7 @@
     "identity",
     "messageTeamMembers"
   ],
-  "validDomains": []
+  "validDomains": [
+    "endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn"
+  ]
 }

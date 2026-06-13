@@ -1,5 +1,8 @@
 .env
 *.env
+.greennode.json
+.agentbase/
+.agentbase-*.txt
 __pycache__/
 **pycache**/
 *.pyc

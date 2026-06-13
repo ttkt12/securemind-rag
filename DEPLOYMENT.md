@@ -1,166 +1,253 @@
-# Agent Base Deployment Readiness
+# SecureMind RAG Deployment
 
-This guide describes a generic deployment path for hosting SecureMind RAG as a Bot Framework-compatible HTTP chatbot endpoint.
+This guide covers deployment readiness for SecureMind RAG as an internal RAG chatbot service with CLI, web chat, and Microsoft Teams Bot Framework interfaces.
 
-AgentBase deployment is prepared but has not been executed yet.
+AgentBase deployment is available for this project and has been used for the internal demo runtime.
 
-SecureMind RAG should be deployed as a Python service with this start command:
+## Runtime Shape
+
+Start command:
 
 ```bash
-python3 teams_bot.py
+python teams_bot.py
 ```
 
-The Docker image uses the same start command and exposes port `8080`.
+The service binds to `0.0.0.0` and uses `PORT` when provided by the hosting platform. If `PORT` is not set, it falls back to `TEAMS_BOT_PORT`, then `3978`.
 
-The service exposes:
+Runtime endpoints:
 
 ```text
-GET /health
+GET  /health
+GET  /
+POST /chat
 POST /api/messages
 ```
 
-The public messaging endpoint for Microsoft Teams or an Agent Base routing layer should be:
+Endpoint purposes:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/health` | Health check endpoint for AgentBase or another hosting platform. |
+| `/` | Temporary web chat UI for browser demos. |
+| `/chat` | Web chat JSON API that calls the same RAG core as the CLI and Teams bot. |
+| `/api/messages` | Microsoft Teams / Bot Framework messaging endpoint. |
+
+Calling `/api/messages` with GET may return `405 Method Not Allowed`. This is expected because Microsoft Teams sends Bot Framework activities as POST requests.
+
+## Current AgentBase Demo Endpoint
+
+Health URL:
 
 ```text
-https://<public-url>/api/messages
+https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn/health
 ```
 
-## Required Environment Variables
+Web UI:
 
-LLM / AI platform:
-
-```bash
-AI_PLATFORM_API_KEY=...
-AI_PLATFORM_BASE_URL=...
-AI_PLATFORM_MODEL=...
+```text
+https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn/
 ```
 
-RAG runtime:
+Web chat API:
+
+```text
+https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn/chat
+```
+
+Teams / Bot Framework messaging endpoint:
+
+```text
+https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn/api/messages
+```
+
+Teams app package:
+
+```text
+securemind-rag-teams-app.zip
+```
+
+If Teams custom app upload is blocked, send the package to IT/admin and ask them to upload it to the Teams app catalog. If the Azure Bot or Teams bot registration still needs endpoint configuration, set the messaging endpoint to the `/api/messages` URL above.
+
+## Required Runtime Artifacts
+
+The hosted app starts from prebuilt artifacts. Do not run SharePoint sync or ingestion during app startup.
+
+Required:
+
+```text
+vector_db/index.faiss
+vector_db/index.pkl
+document_catalog.json
+```
+
+`vector_db/` is required at runtime. `document_catalog.json` should be rebuilt whenever documents change so catalog-aware retrieval stays aligned with the FAISS index.
+
+## Rebuild Workflow
+
+When SharePoint or local documents change, rebuild locally in this order:
 
 ```bash
-VECTOR_DB_DIR=vector_db
-EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-RETRIEVAL_K=4
-RETRIEVAL_FETCH_K=20
-MAX_TOKENS=8192
-MAX_CONTEXT_CHARS=5000
-SHOW_USAGE=false
-DEBUG_RETRIEVAL=false
-ANSWER_LANGUAGE=vi
+python sharepoint_sync.py
+python ingest.py
+python build_document_catalog.py
+python chatbot.py
+```
+
+For local-only PDFs, place files in `papers/` and skip `sharepoint_sync.py`.
+
+After rebuilding, provide the updated `vector_db/` and `document_catalog.json` through the approved internal deployment or artifact process.
+
+## Predeploy Validation
+
+Run:
+
+```bash
+python predeploy_check.py
+```
+
+The checker validates:
+
+* Required runtime environment variables are configured.
+* `vector_db/index.faiss` exists.
+* `vector_db/index.pkl` exists.
+* `rag_core` imports.
+* The vector store loads.
+* The LLM client can be created.
+* `teams_bot.py` imports.
+
+## Docker Usage
+
+Build:
+
+```bash
+docker build --platform linux/amd64 -t securemind-rag:test .
+```
+
+Run locally:
+
+```bash
+docker run --rm -p 8080:8080 --env-file .env --name securemind-rag-test securemind-rag:test
+```
+
+Health check:
+
+```bash
+curl http://localhost:8080/health
+```
+
+The Docker image uses the same `python teams_bot.py` startup path and expects the runtime artifacts to be available inside the image or deployment artifact.
+
+## Environment Variables
+
+Do not place real values in documentation. Use `.env.example` as the template and provide real values through `.env` locally or hosting secrets in production-like environments.
+
+AI platform:
+
+```text
+AI_PLATFORM_API_KEY
+AI_PLATFORM_BASE_URL
+AI_PLATFORM_MODEL
+```
+
+RAG:
+
+```text
+PAPERS_DIR
+VECTOR_DB_DIR
+EMBEDDING_MODEL
+RETRIEVAL_K
+RETRIEVAL_FETCH_K
+MIN_RELEVANCE_SCORE
+MAX_TOKENS
+MAX_CONTEXT_CHARS
+SHOW_USAGE
+DEBUG_RETRIEVAL
+ANSWER_LANGUAGE
+```
+
+Microsoft Graph / SharePoint:
+
+```text
+MS_TENANT_ID
+MS_CLIENT_ID
+MS_CLIENT_SECRET
+MS_AUTH_FLOW
+MS_REDIRECT_URI
+SHAREPOINT_HOSTNAME
+SHAREPOINT_SITE_PATH
+SHAREPOINT_FOLDER_PATH
+SHAREPOINT_DOWNLOAD_DIR
+SHAREPOINT_FILE_EXTENSIONS
 ```
 
 Teams / Bot Framework:
 
-```bash
-TEAMS_BOT_APP_ID=...
-TEAMS_BOT_APP_PASSWORD=...
-TEAMS_BOT_HOST=0.0.0.0
-PORT=8080
+```text
+TEAMS_BOT_APP_ID
+TEAMS_BOT_APP_PASSWORD
+TEAMS_BOT_HOST
+TEAMS_BOT_PORT
+PORT
 ```
 
-On hosted platforms, prefer `PORT` when the platform injects a dynamic port. The Dockerfile defaults `PORT=8080`. The bot falls back to `TEAMS_BOT_PORT`, then `3978`.
-
-## Pre-Deployment Steps
-
-1. Prepare documents locally using one of the supported flows:
-
-```bash
-python3 sharepoint_sync.py
-```
-
-or place PDFs directly in `papers/`.
-
-2. Build the vector database:
-
-```bash
-python3 ingest.py
-```
-
-3. Run the readiness checker:
-
-```bash
-python3 predeploy_check.py
-```
-
-4. Start the bot locally:
-
-```bash
-python3 teams_bot.py
-```
-
-5. Verify health:
-
-```bash
-curl http://localhost:3978/health
-```
-
-## AgentBase Skills
-
-AgentBase skills are installed project-scoped under `.agents/skills/`.
-
-Start with `/agentbase-wizard` and validate before deploying. Use:
+AgentBase:
 
 ```text
-/agentbase-wizard test validate
+GREENNODE_CLIENT_ID
+GREENNODE_CLIENT_SECRET
 ```
 
-Use `/agentbase-deploy` only after local tests and validation pass.
+## AgentBase Notes
 
-Required AgentBase credentials must be set locally in `.env`:
+Use `/agentbase-deploy` only when a deployment or redeployment is intentionally required. Do not run it as part of normal documentation updates or Git pushes.
 
-```bash
-GREENNODE_CLIENT_ID=...
-GREENNODE_CLIENT_SECRET=...
+Deployment settings:
+
+```text
+Start command: python teams_bot.py
+Health endpoint: /health
+Web UI: /
+Web chat API: /chat
+Teams/Bot Framework endpoint: /api/messages
+Runtime artifact: vector_db/ and document_catalog.json
 ```
 
-Never commit `.env`.
+## Microsoft Teams Notes
 
-## Vector DB Deployment Options
+Teams app package files:
 
-`vector_db/` is required at runtime. If it is not present, `teams_bot.py` stops with a clear error and instructs the operator to run ingestion or provide the vector database as a deployment artifact.
+```text
+teams_app/manifest.json
+teams_app/color.png
+teams_app/outline.png
+```
 
-Option A - Prebuilt vector DB:
+The zip package must contain these files at the root of the archive, not inside a parent folder.
 
-Run `python3 sharepoint_sync.py`, then `python3 ingest.py`, then upload or mount `vector_db/` as a private deployment artifact if Agent Base supports private artifacts or mounted storage.
+IT/Admin may need to:
 
-This is preferred for demo stability because the bot can start quickly and does not need interactive SharePoint login during startup.
+* Allow custom app upload for the user or tenant.
+* Upload the app to the Teams app catalog.
+* Configure the Azure Bot messaging endpoint.
+* Enable the Microsoft Teams channel for the bot.
 
-The default `.dockerignore` excludes `vector_db/` so it is not accidentally baked into an image or committed as build context. If Agent Base requires bundling the index inside the image for a private demo, make that as an explicit deployment-time decision and keep the repository rule of never committing `vector_db/`.
+Message to IT/Admin:
 
-Option B - Build index during deployment:
+```text
+Please configure the Teams/Azure Bot messaging endpoint to:
+https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn/api/messages
 
-Provide SharePoint environment variables, run sync and ingest as a pre-start job, then start `teams_bot.py`.
+The Teams app package is:
+securemind-rag-teams-app.zip
+```
 
-This is not recommended when startup time is limited or when SharePoint authentication requires interactive device login.
+## Security And Artifact Handling
 
-## What Not To Include In Git
-
-Do not commit:
-
-* `.env`
-* API keys or client secrets
-* `vector_db/`
-* `sharepoint_downloads/`
-* internal documents
-* `token_cache.bin`
-* virtual environments
-
-These must be supplied by environment variables, private artifacts, mounted storage, or approved deployment secret management.
-
-## SharePoint Sync Notes
-
-`sharepoint_sync.py` is a separate local sync tool. The hosted bot does not run SharePoint sync automatically and does not require interactive SharePoint login at bot startup.
-
-For demo deployment, build `vector_db/` before deployment and provide it to the runtime.
-
-## Teams / Bot Framework Notes
-
-IT/Admin must provide or configure:
-
-* Teams Bot App ID
-* Teams Bot App Password / Client Secret
-* Azure Bot or Bot Channels Registration
-* Microsoft Teams channel enabled
-* Messaging endpoint: `https://<public-url>/api/messages`
-* Permission to upload a custom Teams app for testing
-* Production hosting target later, such as Agent Base, Azure App Service, or approved internal hosting
+* Keep the repository private.
+* Do not print or expose `.env` values.
+* Do not include API keys, Microsoft secrets, Teams bot passwords, or GreenNode secrets in docs or logs.
+* Do not commit `sharepoint_downloads/` raw documents.
+* Treat `vector_db/` and `document_catalog.json` as sensitive derived artifacts.
+* Do not run SharePoint sync during hosted app startup.
+* Do not run ingestion during hosted app startup.
+* Rotate secrets if they are accidentally exposed.

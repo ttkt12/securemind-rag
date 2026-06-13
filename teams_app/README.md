@@ -4,7 +4,7 @@ This folder contains a minimal Microsoft Teams app package for the SecureMind RA
 
 Before packaging:
 
-1. Replace `REPLACE_WITH_TEAMS_BOT_APP_ID` in `manifest.json` with the real Teams Bot App ID.
+1. Confirm `manifest.json` uses the real Teams Bot App ID.
 2. Replace the placeholder `developer` URLs with approved organization URLs if required by your tenant policy.
 3. Keep `color.png` and `outline.png` as valid PNG icons, or replace them with approved production icons.
 

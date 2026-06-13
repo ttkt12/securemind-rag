@@ -4,238 +4,282 @@ Enterprise-ready RAG knowledge assistant for security, compliance, ISMS, policy,
 
 ## Overview
 
-SecureMind RAG is an internal AI knowledge assistant that helps users query security, compliance, ISMS, policy, procedure, standard, and governance documents using Retrieval-Augmented Generation.
+SecureMind RAG is an internal AI knowledge assistant for querying controlled security and governance documents. It combines SharePoint document sync, PDF ingestion, document intelligence, FAISS retrieval, and Qwen-compatible answer generation into one local-first workflow that can be exposed through CLI, web chat, Microsoft Teams, and AgentBase.
 
-The system supports local development, SharePoint document sync, a Microsoft Teams chatbot interface, and AgentBase deployment readiness.
+The project is designed for an internal competition demo, but the structure follows an enterprise pattern: documents stay in approved sources, the vector index is built before runtime, answers cite retrieved sources, and hosted services do not run SharePoint sync or ingestion on startup.
 
 ## Current Capabilities
 
-* Local document ingestion
-* SharePoint document sync via Microsoft Graph delegated access
-* Text cleaning and chunking
-* Multilingual embeddings
-* FAISS vector database
-* Hybrid retrieval using semantic search, document code detection, section keyword matching, and structured metadata parsing
-* Vietnamese and English Q&A support
-* Source traceability with file name, page number, and retrieval score
-* CLI chatbot for local testing
-* Microsoft Teams chatbot endpoint through Bot Framework
-* Docker packaging for deployment
-* AgentBase deployment readiness
-* Pre-deployment validation script
-* Project-scoped AgentBase skills
+* SharePoint sync from a scoped ISMS Portal folder.
+* Local PDF ingestion from `papers/` or `sharepoint_downloads/`.
+* Text cleaning, chunking, multilingual embeddings, and FAISS vector storage.
+* Document intelligence catalog for document codes, process areas, section types, titles, and metadata hints.
+* Hybrid retrieval using semantic search, document code detection, section keyword matching, query expansion, and catalog-aware ranking.
+* Vietnamese and English answer support with concise source-grounded responses.
+* Qwen no-thinking prompt controls and retry handling for empty final content.
+* CLI chatbot for local use.
+* Temporary ChatGPT-like web UI at `/` with chat API at `/chat`.
+* Microsoft Teams Bot Framework endpoint at `/api/messages`.
+* AgentBase deployment support with Docker packaging.
+* Predeploy validation for vector DB, runtime files, configuration, and bot readiness.
 
 ## Architecture
 
 ```text
-SharePoint / Local Documents
-↓
-Document Sync / Local Ingestion
-↓
+SharePoint ISMS Portal / Local Documents
+|
+v
+SharePoint Sync / Local Ingestion
+|
+v
 Text Cleaning & Chunking
-↓
+|
+v
+Document Catalog & Metadata Intelligence
+|
+v
 Embedding Generation
-↓
+|
+v
 FAISS Vector Store
-↓
+|
+v
 RAG Core
-↓
+|
+v
 Interfaces:
-
 * CLI Chatbot
+* Web Chat UI
 * Microsoft Teams Bot Endpoint
-  ↓
-  Future Hosting:
-* AgentBase
-* Approved enterprise hosting platform
+  |
+  v
+  Hosting:
+* AgentBase Runtime
 ```
 
 ## Main Components
 
-* `config.py` - environment and runtime configuration
-* `text_utils.py` - PDF text cleaning utilities
-* `ingest.py` - document ingestion and vector database creation
-* `rag_core.py` - reusable RAG retrieval and answering logic
-* `chatbot.py` - local CLI chatbot
-* `sharepoint_sync.py` - Microsoft Graph SharePoint document sync
-* `teams_bot.py` - Microsoft Teams Bot Framework HTTP endpoint
-* `predeploy_check.py` - deployment readiness validation
-* `Dockerfile` - container packaging
-* `.dockerignore` - Docker build exclusions
-* `DEPLOYMENT.md` - deployment notes
-* `.env.example` - safe configuration template
-* `.agents/skills/` - project-scoped AgentBase skills
+| File or folder | Purpose |
+| --- | --- |
+| `config.py` | Central runtime configuration loaded from environment variables. |
+| `text_utils.py` | Text normalization and cleanup helpers used during ingestion. |
+| `sharepoint_sync.py` | Microsoft Graph sync for downloading allowed SharePoint documents from the configured folder. |
+| `ingest.py` | Loads documents, chunks text, generates embeddings, and builds `vector_db/`. |
+| `build_document_catalog.py` | Builds `document_catalog.json` from the indexed document chunks. |
+| `document_intelligence.py` | Document code, process area, section type, synonym, and catalog-ranking logic. |
+| `rag_core.py` | Reusable retrieval and answer generation logic shared by every interface. |
+| `chatbot.py` | Thin local CLI entrypoint. |
+| `teams_bot.py` | aiohttp service for health checks, web chat, and Teams Bot Framework messages. |
+| `predeploy_check.py` | Deployment-readiness validation script. |
+| `eval_agent.py` | Lightweight evaluation runner for representative questions. |
+| `teams_app/` | Microsoft Teams custom app manifest and icons. |
+| `Dockerfile` | Container runtime for AgentBase or another approved host. |
+| `.agents/skills/` | Project-scoped AgentBase operating skills. |
 
-## Local Development Workflow
+## SharePoint Sync Flow
 
-1. Configure `.env`.
-2. Sync documents from SharePoint or add local PDFs.
-3. Run document ingestion.
-4. Test with CLI chatbot.
-5. Start Teams bot endpoint locally.
-6. Validate before AgentBase deployment.
-7. Push back to GitHub to continue on another machine.
+`sharepoint_sync.py` reads configuration from `.env`, authenticates through Microsoft Graph, resolves the configured SharePoint site and folder, then downloads supported files into `SHAREPOINT_DOWNLOAD_DIR`.
 
-Common commands:
-
-```bash
-python3 sharepoint_sync.py
-python3 ingest.py
-python3 chatbot.py
-python3 teams_bot.py
-python3 predeploy_check.py
-```
-
-## SharePoint Integration
-
-SharePoint sync uses Microsoft Graph delegated permissions. It reads documents that the signed-in user is allowed to access and downloads them into `sharepoint_downloads/`.
-
-Downloaded documents are local working files and should not normally be committed. After sync, set `PAPERS_DIR=sharepoint_downloads` in `.env` to ingest the synced documents.
-
-Do not place real SharePoint URLs, tenant IDs, app IDs, secrets, or internal document contents in documentation.
-
-## Microsoft Teams Chatbot Interface
-
-`teams_bot.py` exposes:
+The intended scoped sync is:
 
 ```text
-GET /health
+SHAREPOINT_HOSTNAME -> SHAREPOINT_SITE_PATH -> SHAREPOINT_FOLDER_PATH -> SHAREPOINT_DOWNLOAD_DIR
+```
+
+When `SHAREPOINT_FOLDER_PATH` is set, the sync must start from that folder. If the folder cannot be resolved, the script stops instead of scanning the whole drive. This prevents noisy indexing and accidental ingestion of unrelated documents.
+
+## Document Intelligence Layer
+
+The document intelligence layer turns the vector database into a structured document catalog. `build_document_catalog.py` scans indexed chunks and writes `document_catalog.json` with best-effort metadata such as:
+
+* Document code and title.
+* Document type and likely process area.
+* Section types such as scope, purpose, responsibility, procedure, control, or definition.
+* Source files and pages.
+* Likely user questions and search hints.
+
+`rag_core.py` uses this catalog before and during retrieval so questions like "which document should I check for access request?" or "tell me the scope of ZION-QT-08" can prefer the right document and section before calling the LLM.
+
+## Local CLI Chatbot
+
+The CLI chatbot keeps the original local workflow:
+
+```powershell
+python chatbot.py
+```
+
+It loads the existing `vector_db/`, creates the LLM client, accepts terminal questions, prints the answer, and shows source file, page, and retrieval score details.
+
+Exit commands:
+
+```text
+exit
+quit
+q
+```
+
+## Web Chat UI
+
+`teams_bot.py` also exposes a small browser chat interface for demos:
+
+```text
+GET  /
+POST /chat
+```
+
+The web chat calls the same `rag_core.answer_question()` function as the CLI and Teams bot. It does not change retrieval behavior.
+
+## Microsoft Teams Endpoint
+
+The Bot Framework endpoint is:
+
+```text
 POST /api/messages
 ```
 
-The Teams bot reuses `rag_core.answer_question()` and is intended to work as a conversational chatbot in Microsoft Teams.
+Microsoft Teams sends POST activities to this route. A browser GET request to `/api/messages` may return `405 Method Not Allowed`, which is expected.
 
-Microsoft Teams requires a public HTTPS messaging endpoint. For local testing, a tunnel may be used. For stable deployment, use AgentBase or another approved enterprise hosting platform.
+The custom Teams app package is built from:
 
-## AgentBase Deployment Readiness
+```text
+teams_app/manifest.json
+teams_app/color.png
+teams_app/outline.png
+```
 
-The project includes Docker packaging and deployment readiness checks. AgentBase can host the bot and provide a stable messaging endpoint.
+## AgentBase Deployment
 
-Preferred demo strategy:
-
-* Build or provide `vector_db/` before runtime.
-* Start with `python3 teams_bot.py`.
-
-`vector_db/` is required at runtime unless the platform builds the index before startup.
+SecureMind RAG can run as an AgentBase custom runtime. The deployment uses the prebuilt vector database and starts the bot service directly.
 
 Start command:
 
 ```bash
-python3 teams_bot.py
+python teams_bot.py
 ```
 
-Health endpoint:
+Runtime endpoints:
 
 ```text
-/health
+GET  /health
+GET  /
+POST /chat
+POST /api/messages
 ```
 
-Messaging endpoint:
+Important runtime artifacts:
 
-```text
-/api/messages
-```
+* `vector_db/index.faiss`
+* `vector_db/index.pkl`
+* `document_catalog.json`
 
-## Docker
+Do not run SharePoint sync or ingestion during app startup.
+
+## Docker Usage
 
 Build:
 
-```bash
+```powershell
 docker build --platform linux/amd64 -t securemind-rag:test .
 ```
 
-Local test with `vector_db` mounted:
+Run locally:
 
-```bash
-docker run --rm \
-  -p 8080:8080 \
-  --env-file .env \
-  -v "$PWD/vector_db:/app/vector_db:ro" \
-  --name securemind-rag-test \
-  securemind-rag:test
+```powershell
+docker run --rm -p 8080:8080 --env-file .env --name securemind-rag-test securemind-rag:test
 ```
 
 Health check:
 
-```bash
+```powershell
 curl http://localhost:8080/health
 ```
 
-## Configuration
+## Configuration Overview
 
-| Group | Environment variables |
+Use `.env.example` as the safe template. Real values belong in `.env` or the hosting platform's secret manager, not in documentation.
+
+| Area | Variables |
 | --- | --- |
-| AI Platform | `AI_PLATFORM_API_KEY`, `AI_PLATFORM_BASE_URL`, `AI_PLATFORM_MODEL` |
+| AI platform | `AI_PLATFORM_API_KEY`, `AI_PLATFORM_BASE_URL`, `AI_PLATFORM_MODEL` |
 | RAG | `PAPERS_DIR`, `VECTOR_DB_DIR`, `EMBEDDING_MODEL`, `RETRIEVAL_K`, `RETRIEVAL_FETCH_K`, `MAX_CONTEXT_CHARS`, `ANSWER_LANGUAGE` |
-| SharePoint | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_AUTH_FLOW`, `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`, `SHAREPOINT_FOLDER_PATH`, `SHAREPOINT_DOWNLOAD_DIR` |
+| Generation | `MAX_TOKENS`, `SHOW_USAGE`, `DEBUG_RETRIEVAL` |
+| SharePoint | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_AUTH_FLOW`, `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`, `SHAREPOINT_FOLDER_PATH`, `SHAREPOINT_DOWNLOAD_DIR`, `SHAREPOINT_FILE_EXTENSIONS` |
 | Teams | `TEAMS_BOT_APP_ID`, `TEAMS_BOT_APP_PASSWORD`, `TEAMS_BOT_HOST`, `TEAMS_BOT_PORT`, `PORT` |
 | AgentBase | `GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET` |
 
-Use `.env.example` as the safe template. Do not place real values in documentation.
-
 ## Security Notes
 
-* This repository is intended to remain private.
-* `.env` contains sensitive credentials.
-* Committing `.env` is only acceptable here because this is an internal competition workflow.
-* In production, `.env` must not be committed.
-* Internal documents and SharePoint downloads should not normally be committed.
-* `vector_db/` may contain embedded information from documents and should be handled as sensitive.
-* Rotate secrets after demos or internal testing if they were exposed.
+* Keep the repository private.
+* Do not print or expose `.env` values in logs, screenshots, commits, or documentation.
+* Treat `vector_db/` and `document_catalog.json` as sensitive because they are derived from internal documents.
+* Do not commit `sharepoint_downloads/` raw documents.
+* Do not run SharePoint sync or ingestion inside the hosted app startup path.
+* Rotate any credential that was accidentally exposed during local testing or demos.
 
-## Repository Structure
+## Run Locally On Windows
 
-```text
-.
-├── .agents/
-├── papers/
-├── config.py
-├── text_utils.py
-├── ingest.py
-├── rag_core.py
-├── chatbot.py
-├── sharepoint_sync.py
-├── teams_bot.py
-├── predeploy_check.py
-├── Dockerfile
-├── .dockerignore
-├── requirements.txt
-├── .env.example
-├── DEPLOYMENT.md
-└── README.md
-```
-
-## Windows Continuation
-
-Clone and set up:
+Set up the environment:
 
 ```powershell
-git clone <repo-url>
+git clone https://github.com/ttkt12/securemind-rag.git
 cd securemind-rag
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+Create `.env` from `.env.example`, then choose one document source.
+
+For local PDFs:
+
+```powershell
+mkdir papers
+copy C:\path\to\docs\*.pdf papers\
+python ingest.py
+python build_document_catalog.py
 python chatbot.py
 ```
 
-If `vector_db/` is not available:
+For SharePoint:
 
 ```powershell
 python sharepoint_sync.py
 python ingest.py
+python build_document_catalog.py
 python chatbot.py
 ```
 
+Start the HTTP bot service:
+
+```powershell
+python teams_bot.py
+```
+
+Open:
+
+```text
+http://localhost:3978/
+```
+
+## Rebuild After SharePoint Documents Change
+
+When SharePoint content changes, refresh the local artifacts in this order:
+
+```powershell
+python sharepoint_sync.py
+python ingest.py
+python build_document_catalog.py
+python chatbot.py
+```
+
+For a hosted runtime, rebuild locally first, then provide the updated `vector_db/` and `document_catalog.json` through the approved deployment process.
+
 ## Roadmap
 
-* Improve evaluation suite
-* Improve structured metadata extraction
-* Improve document permission awareness
-* Optimize vector DB artifact handling for AgentBase
-* Add admin monitoring and usage logging
-* Add stable production hosting
-* Improve Teams app packaging
-
-## License
-
-License to be defined.
+* Add stronger evaluation reports for retrieval quality and answer grounding.
+* Improve metadata extraction for document owners, review dates, versions, and control mappings.
+* Add permission-aware retrieval once enterprise identity integration is approved.
+* Add admin monitoring, usage analytics, and audit reporting.
+* Replace the temporary web UI with an approved production interface if required.
+* Automate safe artifact packaging for AgentBase without including raw documents.
+* Expand Teams app capabilities for team and group chat scopes after validation.

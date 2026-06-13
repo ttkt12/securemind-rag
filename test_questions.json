@@ -1,0 +1,50 @@
+[
+  {
+    "question": "Muốn xin cấp account thì xem tài liệu nào và làm sao request?",
+    "expected_behavior": "Recommend account/access management document, explain relevant procedure/approval if found, include source."
+  },
+  {
+    "question": "User nghỉ việc thì quyền truy cập xử lý theo tài liệu nào?",
+    "expected_behavior": "Find access revocation/staff movement/leaver related document and explain what to check."
+  },
+  {
+    "question": "Muốn xin quyền admin production thì cần ai approve?",
+    "expected_behavior": "Find access request/admin access approval evidence. If approver not found, say not found."
+  },
+  {
+    "question": "Cần rà soát quyền định kỳ thì xem tài liệu nào?",
+    "expected_behavior": "Find UAR/access review document or section."
+  },
+  {
+    "question": "Nếu muốn thay đổi cấu hình production thì theo quy trình nào?",
+    "expected_behavior": "Find change management document/procedure."
+  },
+  {
+    "question": "Có sự cố bảo mật thì report theo tài liệu nào?",
+    "expected_behavior": "Find incident management procedure."
+  },
+  {
+    "question": "BCP áp dụng khi nào và xem tài liệu nào?",
+    "expected_behavior": "Find business continuity document and scope/scenario if found."
+  },
+  {
+    "question": "Log giao dịch cần kiểm tra ở tài liệu nào?",
+    "expected_behavior": "Find logging/monitoring standard/procedure."
+  },
+  {
+    "question": "What document should I check for access request?",
+    "expected_behavior": "Answer in English or bilingual if user asks English, recommend access/account document."
+  },
+  {
+    "question": "Tài liệu nào nói về bảo vệ dữ liệu cá nhân?",
+    "expected_behavior": "Recommend data protection/privacy/data masking policy or standard and include source."
+  },
+  {
+    "question": "Which procedure applies to production change?",
+    "expected_behavior": "Recommend change management procedure and summarize relevant evidence."
+  },
+  {
+    "question": "Who approves access provisioning?",
+    "expected_behavior": "Find access provisioning approval evidence. If approver is not found, say not found."
+  }
+]

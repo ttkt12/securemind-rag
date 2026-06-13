@@ -52,8 +52,16 @@ def validate_config(auth_flow: str) -> None:
         if not configured:
             missing.append(name)
 
+    folder_path = get_sharepoint_folder_path()
+    print(f"- SHAREPOINT_FOLDER_PATH: {'OK' if folder_path else 'EMPTY'}")
+
     if missing:
         raise RuntimeError("Missing required .env values. Update .env and try again.")
+
+
+def get_sharepoint_folder_path() -> str:
+    folder_path = os.getenv("SHAREPOINT_FOLDER_PATH", "").strip().strip('"').strip("'").strip()
+    return folder_path.strip("/")
 
 
 def load_allowed_extensions() -> set[str]:
@@ -166,6 +174,28 @@ def get_default_drive(access_token: str, site_id: str) -> dict:
     return drive
 
 
+def get_target_folder(access_token: str, site_id: str, folder_path: str) -> dict:
+    print(f"Target folder path: {folder_path}")
+    encoded_folder_path = quote(folder_path, safe="/")
+    folder_url = f"{GRAPH_BASE_URL}/sites/{site_id}/drive/root:/{encoded_folder_path}"
+
+    try:
+        folder = graph_json(folder_url, access_token)
+    except requests.HTTPError as error:
+        status_code = error.response.status_code if error.response is not None else "unknown"
+        if status_code == 404:
+            raise RuntimeError(f"Cannot find SharePoint folder: {folder_path}") from error
+        raise RuntimeError(
+            f"Cannot resolve SharePoint folder: {folder_path} (HTTP {status_code})"
+        ) from error
+
+    if "folder" not in folder:
+        raise RuntimeError(f"Cannot find SharePoint folder: {folder_path}")
+
+    print(f"Target folder found: {folder.get('name') or folder.get('id')}")
+    return folder
+
+
 def iter_drive_children(access_token: str, drive_id: str, item_id: str | None = None):
     if item_id:
         url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/children"
@@ -268,6 +298,7 @@ def sync_drive(
     drive_id: str,
     download_dir: Path,
     allowed_extensions: set[str],
+    start_item_id: str | None = None,
 ) -> None:
     manifest_path = download_dir / MANIFEST_FILE_NAME
     download_dir.mkdir(parents=True, exist_ok=True)
@@ -279,7 +310,7 @@ def sync_drive(
     files_skipped = 0
     updated_entries = dict(manifest_index)
 
-    stack = [(None, Path())]
+    stack = [(start_item_id, Path())]
     while stack:
         item_id, parent_path = stack.pop()
         for item in iter_drive_children(access_token, drive_id, item_id=item_id):
@@ -328,13 +359,16 @@ def main() -> None:
     validate_config(auth_flow)
     hostname = required_env("SHAREPOINT_HOSTNAME")
     site_path = required_env("SHAREPOINT_SITE_PATH")
+    folder_path = get_sharepoint_folder_path()
     download_dir = Path(os.getenv("SHAREPOINT_DOWNLOAD_DIR", "sharepoint_downloads"))
     allowed_extensions = load_allowed_extensions()
 
     access_token = get_access_token()
     site = get_site(access_token, hostname, site_path)
     drive = get_default_drive(access_token, site["id"])
-    sync_drive(access_token, drive["id"], download_dir, allowed_extensions)
+    target_folder = get_target_folder(access_token, site["id"], folder_path) if folder_path else None
+    start_item_id = target_folder["id"] if target_folder else None
+    sync_drive(access_token, drive["id"], download_dir, allowed_extensions, start_item_id=start_item_id)
 
 
 if __name__ == "__main__":

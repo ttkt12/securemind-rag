@@ -14,7 +14,7 @@ RUN apt-get update \
 
 COPY requirements.txt constraints.txt .
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.2.2+cpu" \
+    && python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.12.0+cpu" \
     && python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -c constraints.txt -r requirements.txt
 
 COPY . .
