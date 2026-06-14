@@ -1,0 +1,271 @@
+name: SharePoint knowledge update
+
+"on":
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force SharePoint sync, vector rebuild, Docker build, and AgentBase update"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "0 20 * * *"
+  push:
+    paths:
+      - "chatbot.py"
+      - "rag_core.py"
+      - "answer_engine.py"
+      - "intent_router.py"
+      - "catalog_service.py"
+      - "ingest.py"
+      - "build_document_catalog.py"
+      - "sharepoint_sync.py"
+      - "config.py"
+      - "requirements.txt"
+      - "constraints.txt"
+      - "Dockerfile"
+      - "static/**"
+      - "teams_bot.py"
+      - "scripts/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: write
+
+jobs:
+  update-knowledge:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+      MS_AUTH_FLOW: client_credentials
+      MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+      MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+      MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+      SHAREPOINT_SITE_ID: ${{ secrets.SHAREPOINT_SITE_ID }}
+      SHAREPOINT_DRIVE_ID: ${{ secrets.SHAREPOINT_DRIVE_ID }}
+      SHAREPOINT_HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
+      SHAREPOINT_SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+      SHAREPOINT_FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }}
+      SHAREPOINT_DOWNLOAD_DIR: sharepoint_downloads
+      SHAREPOINT_FILE_EXTENSIONS: ".pdf"
+      PAPERS_DIR: sharepoint_downloads
+      VECTOR_DB_DIR: vector_db
+      AI_PLATFORM_API_KEY: ${{ secrets.AI_PLATFORM_API_KEY }}
+      AI_PLATFORM_BASE_URL: ${{ secrets.AI_PLATFORM_BASE_URL }}
+      AI_PLATFORM_MODEL: ${{ secrets.AI_PLATFORM_MODEL }}
+      EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      CHUNK_SIZE: "1500"
+      CHUNK_OVERLAP: "250"
+      SEMANTIC_CHUNKING_ENABLED: "false"
+      RETRIEVAL_K: "4"
+      RETRIEVAL_FETCH_K: "20"
+      MIN_RELEVANCE_SCORE: "1.2"
+      MAX_TOKENS: "8192"
+      MAX_CONTEXT_CHARS: "5000"
+      SHOW_USAGE: "false"
+      DEBUG_RETRIEVAL: "false"
+      ANSWER_LANGUAGE: vi
+      GREENNODE_CLIENT_ID: ${{ secrets.GREENNODE_CLIENT_ID }}
+      GREENNODE_CLIENT_SECRET: ${{ secrets.GREENNODE_CLIENT_SECRET }}
+      AGENTBASE_RUNTIME_ID: ${{ secrets.AGENTBASE_RUNTIME_ID }}
+      AGENTBASE_ENDPOINT_URL: ${{ secrets.AGENTBASE_ENDPOINT_URL }}
+      AGENTBASE_RUNTIME_FLAVOR: ${{ secrets.AGENTBASE_RUNTIME_FLAVOR }}
+      TEAMS_BOT_APP_ID: ${{ secrets.TEAMS_BOT_APP_ID }}
+      TEAMS_BOT_APP_PASSWORD: ${{ secrets.TEAMS_BOT_APP_PASSWORD }}
+      TEAMS_BOT_HOST: 0.0.0.0
+      TEAMS_BOT_PORT: "3978"
+      PORT: "8080"
+      MICROSOFT_APP_ID: ${{ secrets.TEAMS_BOT_APP_ID }}
+      MICROSOFT_APP_PASSWORD: ${{ secrets.TEAMS_BOT_APP_PASSWORD }}
+      MICROSOFT_APP_TYPE: MultiTenant
+      MICROSOFT_APP_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.12.0+cpu"
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -c constraints.txt -r requirements.txt
+
+      - name: Sync SharePoint documents
+        run: python sharepoint_sync.py
+
+      - name: Compute SharePoint manifest
+        run: python scripts/compute_sharepoint_manifest.py --download-dir "$SHAREPOINT_DOWNLOAD_DIR" --output knowledge_manifest.json
+
+      - name: Detect SharePoint changes
+        id: manifest
+        run: python scripts/detect_knowledge_changes.py --current knowledge_manifest.json --previous last_deployed_manifest.json
+
+      - name: Detect code change type
+        id: code
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "knowledge_code_changed=false" >> "$GITHUB_OUTPUT"
+            echo "deploy_code_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="HEAD~1"
+          fi
+          CHANGED="$(git diff --name-only "$BASE" HEAD || git ls-files)"
+          echo "$CHANGED"
+
+          KNOWLEDGE_REGEX='^(rag_core.py|answer_engine.py|intent_router.py|catalog_service.py|ingest.py|build_document_catalog.py|document_intelligence.py|sharepoint_sync.py|config.py|requirements.txt|constraints.txt|scripts/(compute_sharepoint_manifest|detect_knowledge_changes|ci_smoke_test).py)$'
+          DEPLOY_REGEX='^(Dockerfile|teams_bot.py|chatbot.py|static/|scripts/|\.github/workflows/)'
+
+          if echo "$CHANGED" | grep -Eq "$KNOWLEDGE_REGEX"; then
+            echo "knowledge_code_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "knowledge_code_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if echo "$CHANGED" | grep -Eq "$DEPLOY_REGEX|$KNOWLEDGE_REGEX"; then
+            echo "deploy_code_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy_code_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide rebuild/deploy
+        id: decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          FORCE="${{ inputs.force_rebuild || 'false' }}"
+          KNOWLEDGE_CHANGED="${{ steps.manifest.outputs.knowledge_changed }}"
+          KNOWLEDGE_CODE_CHANGED="${{ steps.code.outputs.knowledge_code_changed }}"
+          DEPLOY_CODE_CHANGED="${{ steps.code.outputs.deploy_code_changed }}"
+
+          REBUILD_KB=false
+          DEPLOY_NEEDED=false
+
+          if [ "$FORCE" = "true" ] || [ "$KNOWLEDGE_CHANGED" = "true" ] || [ "$KNOWLEDGE_CODE_CHANGED" = "true" ]; then
+            REBUILD_KB=true
+            DEPLOY_NEEDED=true
+          elif [ ! -f vector_db/index.faiss ] || [ ! -f vector_db/index.pkl ] || [ ! -f document_catalog.json ]; then
+            REBUILD_KB=true
+            DEPLOY_NEEDED=true
+          elif [ "$DEPLOY_CODE_CHANGED" = "true" ]; then
+            DEPLOY_NEEDED=true
+          fi
+
+          echo "rebuild_kb=$REBUILD_KB" >> "$GITHUB_OUTPUT"
+          echo "deploy_needed=$DEPLOY_NEEDED" >> "$GITHUB_OUTPUT"
+          echo "rebuild_kb=$REBUILD_KB"
+          echo "deploy_needed=$DEPLOY_NEEDED"
+
+      - name: Skip unchanged knowledge base
+        if: steps.decision.outputs.deploy_needed != 'true'
+        run: echo "Knowledge base is up to date."
+
+      - name: Rebuild FAISS vector DB from SharePoint documents
+        if: steps.decision.outputs.rebuild_kb == 'true'
+        run: python ingest.py
+
+      - name: Rebuild document catalog from vector DB
+        if: steps.decision.outputs.rebuild_kb == 'true'
+        run: python build_document_catalog.py
+
+      - name: Validate generated knowledge files
+        if: steps.decision.outputs.deploy_needed == 'true'
+        run: |
+          test -f document_catalog.json
+          test -f vector_db/index.faiss
+          test -f vector_db/index.pkl
+          python - <<'PY'
+          from catalog_service import load_document_catalog
+          count = len(load_document_catalog())
+          print(f"Document count: {count}")
+          if count <= 0:
+              raise SystemExit("document_catalog.json has no documents")
+          PY
+
+      - name: Run CI smoke tests
+        if: steps.decision.outputs.deploy_needed == 'true'
+        run: python scripts/ci_smoke_test.py
+
+      - name: Prepare AgentBase runtime env
+        if: steps.decision.outputs.deploy_needed == 'true'
+        run: python scripts/write_runtime_env.py
+
+      - name: Login to AgentBase managed container registry
+        if: steps.decision.outputs.deploy_needed == 'true'
+        run: bash .agents/skills/agentbase/scripts/cr.sh credentials docker-login
+
+      - name: Build and push Docker image
+        if: steps.decision.outputs.deploy_needed == 'true'
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO_JSON="$(bash .agents/skills/agentbase/scripts/cr.sh repo get)"
+          REGISTRY="$(echo "$REPO_JSON" | jq -r '.registryUrl')"
+          REPO_NAME="$(echo "$REPO_JSON" | jq -r '.name')"
+          TAG="v$(date +%Y%m%d%H%M%S)"
+          IMAGE="$REGISTRY/$REPO_NAME/securemind-rag:$TAG"
+          docker build --platform linux/amd64 -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Update existing AgentBase runtime
+        if: steps.decision.outputs.deploy_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AGENTBASE_RUNTIME_ID:-}" ]; then
+            echo "AGENTBASE_RUNTIME_ID secret is required to update the existing runtime."
+            exit 1
+          fi
+          FLAVOR="${AGENTBASE_RUNTIME_FLAVOR:-runtime-s2-general-2x4}"
+          bash .agents/skills/agentbase/scripts/runtime.sh update "$AGENTBASE_RUNTIME_ID" \
+            --image "${{ steps.image.outputs.image }}" \
+            --flavor "$FLAVOR" \
+            --description "SecureMind RAG SharePoint knowledge update" \
+            --env-file .agentbase/runtime.env \
+            --from-cr \
+            --min-replicas 1 \
+            --max-replicas 1 \
+            --cpu-scale 50 \
+            --mem-scale 50
+
+      - name: Verify production endpoints
+        if: steps.decision.outputs.deploy_needed == 'true'
+        run: |
+          if [ -z "${AGENTBASE_ENDPOINT_URL:-}" ]; then
+            echo "AGENTBASE_ENDPOINT_URL secret is required for production verification."
+            exit 1
+          fi
+          python scripts/production_verify.py --base-url "$AGENTBASE_ENDPOINT_URL"
+
+      - name: Store last deployed SharePoint manifest
+        if: steps.decision.outputs.rebuild_kb == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp knowledge_manifest.json last_deployed_manifest.json
+          if git diff --quiet -- last_deployed_manifest.json; then
+            echo "last_deployed_manifest.json already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last_deployed_manifest.json
+          git commit -m "Update deployed SharePoint knowledge manifest"
+          git push

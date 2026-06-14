@@ -13,6 +13,9 @@ sharepoint_downloads/
 token_cache.bin
 *.token
 .agentbase-state.json
+teams/.package_build/
+securemind-rag-teams-template.zip
+securemind-rag-teams-app.zip
 papers/*
 !papers/.gitkeep
 *.pdf

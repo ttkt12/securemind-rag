@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SecureMind RAG</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="intro-panel" aria-label="SecureMind RAG overview">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">SM</div>
+        <div>
+          <p class="brand-name">SecureMind RAG</p>
+          <p class="brand-tagline">Ask questions from ISMS documents</p>
+        </div>
+      </div>
+
+      <div class="hero-copy">
+        <h1>SecureMind RAG</h1>
+        <p>
+          A focused internal assistant for security, compliance, ISMS, policy,
+          procedure, and governance documents.
+        </p>
+      </div>
+
+      <div class="sidebar-workspace">
+        <div class="session-toolbar">
+          <button class="new-chat-button" id="new-chat" type="button">New chat</button>
+          <button class="clear-sessions-button" id="clear-sessions" type="button">Clear</button>
+        </div>
+
+        <div class="session-block" aria-label="Chat sessions">
+          <p class="sidebar-label">Sessions</p>
+          <div class="session-list" id="session-list"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="chat-panel" aria-label="SecureMind chat">
+      <div class="chat-header">
+        <div>
+          <p class="surface-label">Document intelligence</p>
+          <h2>Ask the ISMS knowledge base</h2>
+        </div>
+        <span class="status-pill" id="status-pill">Ready</span>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite" aria-label="Conversation">
+        <div class="empty-state" id="empty-state">
+          <p class="empty-title">Ask about an ISMS, policy, procedure, or security document.</p>
+          <p class="empty-copy">Answers come from retrieved document context and include source references when available.</p>
+          <div class="empty-examples" aria-label="Example questions"></div>
+        </div>
+      </div>
+
+      <form class="composer" id="chat-form">
+        <label class="sr-only" for="question">Question</label>
+        <textarea
+          id="question"
+          name="question"
+          rows="2"
+          placeholder="Ask about a security, compliance, ISMS, policy, or procedure document"
+          autocomplete="off"
+          required
+        ></textarea>
+        <button id="send" class="send-button" type="submit" disabled>
+          <span>Send</span>
+        </button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

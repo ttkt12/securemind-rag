@@ -20,6 +20,7 @@ The project is designed for an internal competition demo, but the structure foll
 * CLI chatbot for local use.
 * Temporary ChatGPT-like web UI at `/` with chat API at `/chat`.
 * Microsoft Teams Bot Framework endpoint at `/api/messages`.
+* Optional GreenNode AgentBase Memory recall and safe fact storage for CLI chat.
 * AgentBase deployment support with Docker packaging.
 * Predeploy validation for vector DB, runtime files, configuration, and bot readiness.
 
@@ -67,18 +68,30 @@ Interfaces:
 | `ingest.py` | Loads documents, chunks text, generates embeddings, and builds `vector_db/`. |
 | `build_document_catalog.py` | Builds `document_catalog.json` from the indexed document chunks. |
 | `document_intelligence.py` | Document code, process area, section type, synonym, and catalog-ranking logic. |
+| `memory.py` | Optional AgentBase Memory abstraction for recall and safe fact storage. |
 | `rag_core.py` | Reusable retrieval and answer generation logic shared by every interface. |
 | `chatbot.py` | Thin local CLI entrypoint. |
 | `teams_bot.py` | aiohttp service for health checks, web chat, and Teams Bot Framework messages. |
 | `predeploy_check.py` | Deployment-readiness validation script. |
 | `eval_agent.py` | Lightweight evaluation runner for representative questions. |
-| `teams_app/` | Microsoft Teams custom app manifest and icons. |
+| `teams_app/` | Microsoft Teams custom app manifest and icons for the current package. |
+| `teams/` | Microsoft Teams manifest template and packaging notes. |
 | `Dockerfile` | Container runtime for AgentBase or another approved host. |
 | `.agents/skills/` | Project-scoped AgentBase operating skills. |
+
+## Chunking Strategy
+
+`ingest.py` uses document-aware chunking for ISMS, policy, standard, and procedure PDFs. It first preserves structure from headings, numbered sections, Vietnamese/English procedure headings, and bullet lists, then falls back to `RecursiveCharacterTextSplitter` for oversized sections.
+
+Optional semantic chunking is available behind `SEMANTIC_CHUNKING_ENABLED=false` by default. See `CHUNKING_STRATEGY.md` for the full settings, tradeoffs, and rebuild workflow.
 
 ## SharePoint Sync Flow
 
 `sharepoint_sync.py` reads configuration from `.env`, authenticates through Microsoft Graph, resolves the configured SharePoint site and folder, then downloads supported files into `SHAREPOINT_DOWNLOAD_DIR`.
+
+Production treats SharePoint as the document source of truth. GitHub stores code and CI/CD workflow only; official PDFs should not be committed to the repository. The GitHub Actions workflow in `.github/workflows/sharepoint-knowledge-update.yml` can sync SharePoint, compare `knowledge_manifest.json` with `last_deployed_manifest.json`, rebuild `vector_db/` and `document_catalog.json` when needed, and update the existing AgentBase runtime.
+
+See [SHAREPOINT_AUTO_UPDATE_PIPELINE.md](SHAREPOINT_AUTO_UPDATE_PIPELINE.md) for the full pipeline design, required GitHub Secrets, and troubleshooting notes.
 
 The intended scoped sync is:
 
@@ -109,6 +122,8 @@ python chatbot.py
 ```
 
 It loads the existing `vector_db/`, creates the LLM client, accepts terminal questions, prints the answer, and shows source file, page, and retrieval score details.
+
+When AgentBase Memory is enabled, the CLI also recalls relevant prior semantic memories before calling the LLM and stores only explicit non-sensitive facts or preferences after answering. If memory is disabled, misconfigured, unavailable, or the SDK call fails, the chatbot prints a short warning and continues with normal RAG-only behavior.
 
 Exit commands:
 
@@ -147,6 +162,8 @@ teams_app/color.png
 teams_app/outline.png
 ```
 
+For setup details, see `README_TEAMS.md`. A placeholder Teams app template is also available in `teams/`.
+
 ## AgentBase Deployment
 
 SecureMind RAG can run as an AgentBase custom runtime. The deployment uses the prebuilt vector database and starts the bot service directly.
@@ -173,6 +190,43 @@ Important runtime artifacts:
 * `document_catalog.json`
 
 Do not run SharePoint sync or ingestion during app startup.
+
+## AgentBase Memory
+
+AgentBase Memory is optional and enhances the CLI chatbot without replacing local PDF retrieval or FAISS search.
+
+Behavior:
+
+* Recall: before answering, `chatbot.py` searches AgentBase Memory for records relevant to the current question and passes them to `rag_core.answer_question()` as a separate memory context.
+* Remember: after answering, the chatbot stores only explicit non-sensitive facts, user preferences, or project context statements such as "remember that...", "I prefer...", or "project context: ...".
+* Safety: the memory layer rejects likely secrets and does not store PDF chunks, retrieved document context, API keys, passwords, tokens, or raw confidential source text.
+* Fallback: if any memory setting is missing, `greennode-agentbase` is not installed, or the memory service call fails, the chatbot continues with normal RAG-only behavior.
+
+Required dependency:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Environment placeholders:
+
+```text
+ENABLE_AGENTBASE_MEMORY=true
+MEMORY_ID=your_agentbase_memory_id_here
+MEMORY_STRATEGY_ID=your_agentbase_memory_strategy_id_here
+MEMORY_ACTOR_ID=local-user
+MEMORY_SEARCH_LIMIT=5
+MEMORY_MAX_CONTEXT_CHARS=1200
+```
+
+`MEMORY_ID` is the AgentBase Memory container ID. `MEMORY_STRATEGY_ID` is the long-term memory strategy ID used to build the namespace `/strategies/{MEMORY_STRATEGY_ID}/actors/{MEMORY_ACTOR_ID}`. Keep GreenNode credentials in local `.env` or the AgentBase runtime environment; do not hardcode them.
+
+Manual GreenNode setup still required:
+
+* Create or identify a Memory store in GreenNode AgentBase.
+* Create or identify a long-term memory strategy.
+* Add the Memory ID and strategy ID to `.env`.
+* Keep the repository private and do not commit real secrets.
 
 ## Docker Usage
 
@@ -206,6 +260,7 @@ Use `.env.example` as the safe template. Real values belong in `.env` or the hos
 | SharePoint | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_AUTH_FLOW`, `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`, `SHAREPOINT_FOLDER_PATH`, `SHAREPOINT_DOWNLOAD_DIR`, `SHAREPOINT_FILE_EXTENSIONS` |
 | Teams | `TEAMS_BOT_APP_ID`, `TEAMS_BOT_APP_PASSWORD`, `TEAMS_BOT_HOST`, `TEAMS_BOT_PORT`, `PORT` |
 | AgentBase | `GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET` |
+| AgentBase Memory | `ENABLE_AGENTBASE_MEMORY`, `MEMORY_ID`, `MEMORY_STRATEGY_ID`, `MEMORY_ACTOR_ID`, `MEMORY_SEARCH_LIMIT`, `MEMORY_MAX_CONTEXT_CHARS` |
 
 ## Security Notes
 

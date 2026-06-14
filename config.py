@@ -34,9 +34,19 @@ EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
 )
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
-RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "2"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "250"))
+SEMANTIC_CHUNKING_ENABLED = os.getenv("SEMANTIC_CHUNKING_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+}
+SEMANTIC_CHUNK_MIN_CHARS = int(os.getenv("SEMANTIC_CHUNK_MIN_CHARS", "700"))
+SEMANTIC_CHUNK_MAX_CHARS = int(os.getenv("SEMANTIC_CHUNK_MAX_CHARS", str(CHUNK_SIZE)))
+SEMANTIC_CHUNK_SIMILARITY_THRESHOLD = float(os.getenv("SEMANTIC_CHUNK_SIMILARITY_THRESHOLD", "0.55"))
+RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "4"))
 RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "20"))
 MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "1.35"))
 DEBUG_RETRIEVAL = os.getenv("DEBUG_RETRIEVAL", "false").lower() in {
@@ -46,9 +56,21 @@ DEBUG_RETRIEVAL = os.getenv("DEBUG_RETRIEVAL", "false").lower() in {
     "y",
 }
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4096"))
-MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "2500"))
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "5000"))
 SHOW_USAGE = os.getenv("SHOW_USAGE", "true").lower() in {"1", "true", "yes", "y"}
 ANSWER_LANGUAGE = os.getenv("ANSWER_LANGUAGE", "vi").lower()
+ENABLE_AGENTBASE_MEMORY = os.getenv("ENABLE_AGENTBASE_MEMORY", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+}
+MEMORY_ID = (os.getenv("MEMORY_ID") or os.getenv("AGENTBASE_MEMORY_ID") or "").strip()
+MEMORY_STRATEGY_ID = os.getenv("MEMORY_STRATEGY_ID", "").strip()
+MEMORY_ACTOR_ID = os.getenv("MEMORY_ACTOR_ID", "").strip()
+MEMORY_SEARCH_LIMIT = int(os.getenv("MEMORY_SEARCH_LIMIT", "5"))
+MEMORY_MAX_CONTEXT_CHARS = int(os.getenv("MEMORY_MAX_CONTEXT_CHARS", "1200"))
 
 API_KEY_ENV_NAMES = (
     "AI_PLATFORM_API_KEY",

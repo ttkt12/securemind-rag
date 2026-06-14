@@ -30,10 +30,10 @@ from document_intelligence import (
 from langchain_community.vectorstores import FAISS
 from openai import APIStatusError, OpenAI
 
-NO_RELEVANT_CONTEXT_ANSWER = (
-    "Không tìm thấy thông tin này trong tài liệu được cung cấp. "
-    "Bạn có thể hỏi lại cụ thể hơn hoặc kiểm tra xem tài liệu liên quan "
-    "đã được thêm vào hệ thống chưa."
+NO_RELEVANT_CONTEXT_ANSWER = "Không tìm thấy thông tin này trong tài liệu hiện có."
+CATALOG_UNAVAILABLE_ANSWER = (
+    "Không thể xác định số lượng tài liệu vì chưa tìm thấy document catalog. "
+    "Vui lòng chạy lại bước build catalog/ingest."
 )
 EMPTY_FINAL_ANSWER = (
     "Model đã xác thực và truy xuất được tài liệu liên quan, nhưng không trả về "
@@ -64,6 +64,14 @@ class QueryAnalysis:
     expanded_query: str = ""
 
 
+@dataclass
+class CatalogAnswer:
+    answer: str
+    total_documents: int
+    documents: list[dict] = field(default_factory=list)
+    question_type: str = "catalog"
+
+
 OPERATIONAL_INTENT_KEYWORDS = {
     "access_request": [
         "cap quyen",
@@ -84,6 +92,9 @@ OPERATIONAL_INTENT_KEYWORDS = {
         "permission",
         "role",
         "privilege",
+        "authorization",
+        "authorize",
+        "authorisation",
         "system access",
         "production access",
     ],
@@ -156,6 +167,8 @@ OPERATIONAL_INTENT_KEYWORDS = {
         "audit logs",
         "monitoring",
         "giam sat",
+        "nhat ky",
+        "nhật ký",
         "opensearch",
         "superset",
         "log retention",
@@ -180,6 +193,30 @@ OPERATIONAL_INTENT_KEYWORDS = {
         "security testing",
         "lo hong",
         "ban va",
+    ],
+    "password_policy": [
+        "mat khau",
+        "password",
+        "passcode",
+        "pin",
+        "credential",
+        "credentials",
+        "xac thuc",
+        "authentication",
+        "dang nhap",
+        "login",
+        "tai khoan",
+        "account",
+        "do dai mat khau",
+        "password length",
+        "do phuc tap mat khau",
+        "password complexity",
+        "password expiration",
+        "password expiry",
+        "het han mat khau",
+        "password policy",
+        "password requirement",
+        "password requirements",
     ],
     "policy_lookup": [
         "tai lieu nao",
@@ -230,6 +267,9 @@ OPERATIONAL_QUERY_EXPANSIONS = {
         "approver",
         "ticket",
         "request",
+        "authorization",
+        "authorize",
+        "access control",
         "joiner",
         "mover",
         "leaver",
@@ -306,6 +346,10 @@ OPERATIONAL_QUERY_EXPANSIONS = {
         "OpenSearch",
         "Superset",
         "log retention",
+        "nhat ky",
+        "nhật ký",
+        "security monitoring",
+        "event monitoring",
     ],
     "data_protection": [
         "personal data",
@@ -321,6 +365,27 @@ OPERATIONAL_QUERY_EXPANSIONS = {
         "VA",
         "pentest",
         "security testing",
+    ],
+    "password_policy": [
+        "mat khau",
+        "password",
+        "passcode",
+        "PIN",
+        "credential",
+        "credentials",
+        "xac thuc",
+        "authentication",
+        "dang nhap",
+        "login",
+        "tai khoan",
+        "account",
+        "do dai mat khau",
+        "password length",
+        "password complexity",
+        "password expiration",
+        "password expiry",
+        "password policy",
+        "password requirements",
     ],
     "policy_lookup": [
         "document",
@@ -356,6 +421,7 @@ OPERATIONAL_PRIMARY_INTENTS = [
     "logging_monitoring",
     "data_protection",
     "vulnerability_management",
+    "password_policy",
     "policy_lookup",
     "how_to",
 ]
@@ -377,6 +443,12 @@ OPERATIONAL_SOURCE_TERMS = [
     "vulnerability",
     "data",
     "security",
+    "password",
+    "mat khau",
+    "credential",
+    "authentication",
+    "login",
+    "account",
 ]
 
 INTENT_SECTION_PRIORITIES = {
@@ -389,6 +461,7 @@ INTENT_SECTION_PRIORITIES = {
     "logging_monitoring": ["scope", "monitoring_review", "procedure_steps"],
     "data_protection": ["scope", "procedure_steps", "roles_responsibilities"],
     "vulnerability_management": ["procedure_steps", "monitoring_review", "evidence_record"],
+    "password_policy": ["scope", "policy", "procedure_steps", "monitoring_review"],
     "policy_lookup": ["scope", "purpose", "procedure_steps"],
     "how_to": ["procedure_steps", "approval", "roles_responsibilities"],
     "version_author_mapping": ["version_control"],
@@ -433,7 +506,7 @@ def format_context(documents) -> str:
         if remaining_chars <= 0:
             break
 
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
         page_label = f", page {page + 1}" if isinstance(page, int) else ""
         document_code = document.metadata.get("document_code") or extract_document_code_from_source(source)
@@ -546,8 +619,15 @@ def is_follow_up_question(question: str) -> bool:
         "version",
         "ver",
         "v",
+        "what about",
+        "tell me more",
+        "noi ro",
+        "ro hon",
+        "phan",
+        "muc",
+        "y thu",
     ]
-    return len(folded_question.split()) <= 6 or any(term in folded_question for term in follow_up_terms)
+    return len(folded_question.split()) <= 10 or any(term in folded_question for term in follow_up_terms)
 
 
 def has_count_terms(text: str) -> bool:
@@ -632,6 +712,7 @@ def detect_process_areas_from_intents(intents: list[str]) -> list[str]:
         "logging_monitoring": "logging_monitoring",
         "data_protection": "data_protection",
         "vulnerability_management": "vulnerability_management",
+        "password_policy": "password_policy",
     }
     areas = [intent_to_area[intent] for intent in intents if intent in intent_to_area]
     return list(dict.fromkeys(areas))
@@ -1068,6 +1149,7 @@ def analyze_question(question: str, conversation_state: dict | None = None) -> Q
 
 def decide_retrieval_strategy(analysis: QueryAnalysis) -> dict:
     operational_question = bool(analysis.operational_intents or analysis.document_discovery_mode)
+    password_policy_question = "password_policy" in analysis.operational_intents
     exact_constraints = bool(
         analysis.document_codes
         or analysis.requested_versions
@@ -1081,6 +1163,8 @@ def decide_retrieval_strategy(analysis: QueryAnalysis) -> dict:
         keyword_limit = max(keyword_limit, 3)
     if operational_question:
         keyword_limit = max(keyword_limit, RETRIEVAL_K, 4)
+    if password_policy_question:
+        keyword_limit = max(keyword_limit, 8)
 
     return {
         "use_keyword": exact_constraints or operational_question,
@@ -1088,12 +1172,198 @@ def decide_retrieval_strategy(analysis: QueryAnalysis) -> dict:
         "filter_document_code": bool(analysis.document_codes),
         "prefer_exact_constraints": exact_constraints,
         "keyword_limit": keyword_limit,
-        "fetch_k": max(RETRIEVAL_FETCH_K, 40) if operational_question else RETRIEVAL_FETCH_K,
+        "fetch_k": max(RETRIEVAL_FETCH_K, 60 if password_policy_question else 40)
+        if operational_question
+        else RETRIEVAL_FETCH_K,
     }
 
 
+def clean_source_filename(source: str) -> str:
+    name = Path(str(source or "unknown")).name
+    path = Path(name)
+    stem = path.stem
+    suffix = path.suffix
+    stem = re.sub(r"[-_\s]*(?:ThangNguyen[’']s Mac mini|copy of|copy)$", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\s*\(\d+\)$", "", stem)
+    stem = re.sub(r"\s{2,}", " ", stem).strip(" -_")
+    return f"{stem}{suffix}" if stem else name
+
+
 def document_source_name(document) -> str:
-    return Path(document.metadata.get("source", "unknown")).name
+    return clean_source_filename(document.metadata.get("source_filename") or document.metadata.get("source", "unknown"))
+
+
+def catalog_document_key(entry: dict) -> str:
+    return str(
+        entry.get("file_name")
+        or entry.get("filename")
+        or entry.get("source")
+        or entry.get("document_id")
+        or entry.get("document_code")
+        or entry.get("document_title")
+        or ""
+    ).strip()
+
+
+def sanitize_catalog_document(entry: dict) -> dict:
+    filename = str(entry.get("filename") or entry.get("file_name") or "").strip()
+    code = str(entry.get("document_code") or "").strip()
+    title = str(entry.get("document_title") or Path(filename).stem or filename).strip()
+    page_count = entry.get("page_count")
+    chunk_count = entry.get("chunk_count")
+    if not isinstance(page_count, int):
+        source_pages = entry.get("source_pages")
+        page_count = len(source_pages) if isinstance(source_pages, list) else None
+    return {
+        "code": code,
+        "title": title,
+        "filename": filename,
+        "page_count": page_count,
+        "chunk_count": chunk_count if isinstance(chunk_count, int) else None,
+    }
+
+
+def unique_catalog_documents(catalog: list[dict]) -> list[dict]:
+    documents = []
+    seen = set()
+    for entry in catalog or []:
+        key = catalog_document_key(entry)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        documents.append(sanitize_catalog_document(entry))
+    return documents
+
+
+def catalog_documents_from_vector_store(vector_store) -> list[dict]:
+    if vector_store is None:
+        return []
+    grouped: dict[str, dict] = {}
+    for document in vector_store.docstore._dict.values():
+        filename = document_source_name(document)
+        if filename not in grouped:
+            grouped[filename] = {
+                "document_code": extract_document_code_from_source(filename),
+                "document_title": Path(filename).stem,
+                "file_name": filename,
+                "filename": filename,
+                "source_pages": set(),
+                "chunk_count": 0,
+            }
+        grouped[filename]["chunk_count"] += 1
+        page = document.metadata.get("page")
+        if isinstance(page, int):
+            grouped[filename]["source_pages"].add(page + 1)
+
+    fallback = []
+    for entry in grouped.values():
+        entry["source_pages"] = sorted(entry["source_pages"])
+        entry["page_count"] = len(entry["source_pages"])
+        fallback.append(entry)
+    return unique_catalog_documents(fallback)
+
+
+def document_catalog_payload(vector_store=None, include_documents: bool = True) -> dict:
+    documents = unique_catalog_documents(load_document_catalog())
+    if not documents:
+        documents = catalog_documents_from_vector_store(vector_store)
+    payload = {"total_documents": len(documents)}
+    if include_documents:
+        payload["documents"] = documents
+    return payload
+
+
+def detect_catalog_question(question: str) -> str | None:
+    folded_question = fold_accents(normalize_for_match(question))
+    document_terms = (
+        "document",
+        "documents",
+        "tai lieu",
+        "knowledge base",
+        "corpus",
+        "ai agent",
+        "agent nay",
+    )
+    count_terms = (
+        "bao nhieu",
+        "bao nhi",
+        "tat ca bao nhieu",
+        "so luong",
+        "tong so",
+        "how many",
+        "total number",
+        "document count",
+        "count documents",
+    )
+    list_terms = (
+        "liet ke",
+        "li?t k",
+        "danh sach",
+        "nhung document nao",
+        "nhung documents nao",
+        "nhung tai lieu nao",
+        "co nhung document nao",
+        "co nhung tai lieu nao",
+        "list documents",
+        "documents in this agent",
+        "what documents",
+    )
+    has_document_term = any(term in folded_question for term in document_terms)
+    if not has_document_term:
+        return None
+    if any(term in folded_question for term in count_terms):
+        return "count"
+    if any(term in folded_question for term in list_terms):
+        return "list"
+    return None
+
+
+def catalog_document_line(document: dict, index: int) -> str:
+    code = document.get("code")
+    title = document.get("title") or document.get("filename") or "unknown"
+    filename = document.get("filename") or ""
+    page_count = document.get("page_count")
+    prefix = f"{index}. "
+    label = f"{code} - {title}" if code else str(title)
+    if filename and filename not in label:
+        label = f"{label} ({filename})"
+    if isinstance(page_count, int):
+        label = f"{label} - {page_count} pages"
+    return prefix + label
+
+
+def answer_catalog_question(question: str, vector_store=None) -> CatalogAnswer | None:
+    question_type = detect_catalog_question(question)
+    if not question_type:
+        return None
+
+    payload = document_catalog_payload(vector_store=vector_store, include_documents=True)
+    documents = payload.get("documents", [])
+    total_documents = int(payload.get("total_documents", 0))
+    if total_documents <= 0:
+        return CatalogAnswer(
+            answer=CATALOG_UNAVAILABLE_ANSWER,
+            total_documents=0,
+            documents=[],
+            question_type=question_type,
+        )
+
+    if question_type == "count":
+        return CatalogAnswer(
+            answer=f"Hiện tại AI Agent này có {total_documents} tài liệu duy nhất trong document catalog.",
+            total_documents=total_documents,
+            documents=documents,
+            question_type=question_type,
+        )
+
+    lines = [f"Document catalog hiện có {total_documents} tài liệu:"]
+    lines.extend(catalog_document_line(document, index) for index, document in enumerate(documents, start=1))
+    return CatalogAnswer(
+        answer="\n".join(lines),
+        total_documents=total_documents,
+        documents=documents,
+        question_type=question_type,
+    )
 
 
 def document_matches_code(document, document_codes: list[str]) -> bool:
@@ -1237,6 +1507,7 @@ def keyword_search_documents(
     ]
     keywords_to_match = preferred_keywords or section_keywords
     author_intent = section_keywords_indicate_author(section_keywords)
+    password_policy_intent = section_keywords_indicate_password_policy(section_keywords)
     matches = []
     for document in vector_store.docstore._dict.values():
         if document_codes and not document_matches_code(document, document_codes):
@@ -1266,12 +1537,14 @@ def keyword_search_documents(
         selected_document.metadata["section_type"] = classify_section_type(document.page_content)
         selected_document.metadata["section_types"] = classify_chunk_section_types(document.page_content)
         code_priority = 0 if document_codes and document_matches_code(document, document_codes) else 1
+        password_priority = password_policy_priority(selected_document) if password_policy_intent else 0
         toc_priority = 1 if looks_like_table_of_contents(document) else 0
         page = selected_document.metadata.get("page")
         page_priority = page if isinstance(page, int) else 999999
         matches.append(
             (
                 code_priority,
+                password_priority,
                 keyword_rank + (2 if toc_priority else 0),
                 page_priority,
                 -len(matched_keywords),
@@ -1280,16 +1553,78 @@ def keyword_search_documents(
             )
         )
 
-    non_toc_matches = [item for item in matches if not looks_like_table_of_contents(item[5])]
+    non_toc_matches = [item for item in matches if not looks_like_table_of_contents(item[6])]
     if non_toc_matches:
         matches = non_toc_matches
 
-    matches.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
-    return [item[5] for item in matches[:limit]]
+    matches.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
+    return [item[6] for item in matches[:limit]]
 
 
 def keyword_density(document, keywords: list[str]) -> int:
     return sum(1 for keyword in keywords if contains_text(document.page_content, keyword))
+
+
+def section_keywords_indicate_password_policy(section_keywords: list[str]) -> bool:
+    folded_keywords = " ".join(fold_accents(normalize_for_match(keyword)) for keyword in section_keywords)
+    return any(
+        term in folded_keywords
+        for term in (
+            "mat khau",
+            "password",
+            "passcode",
+            "credential",
+            "password length",
+            "password complexity",
+            "password expiration",
+        )
+    )
+
+
+def password_policy_priority(document) -> int:
+    """Prefer actual password policy evidence over generic auth/login mentions."""
+    folded_content = fold_accents(normalize_for_match(document.page_content))
+    folded_source = fold_accents(normalize_for_match(document_source_name(document)))
+    combined = f"{folded_source} {folded_content}"
+
+    requirement_terms = [
+        "password length",
+        "password complexity",
+        "password expiration",
+        "do dai mat khau",
+        "do phuc tap mat khau",
+        "het han mat khau",
+        "policy password",
+        "password policy",
+    ]
+    password_terms = [
+        "mat khau",
+        "password",
+        "passcode",
+    ]
+    credential_terms = ["credential", "credentials", "thong tin xac thuc", "bi mat chung thuc"]
+    weak_terms = ["authentication", "xac thuc", "login", "dang nhap", "account", "tai khoan"]
+    preferred_sources = [
+        "zion-tc-13",
+        "dinh danh",
+        "identity",
+        "truy cap",
+        "access",
+        "quan ly tai khoan",
+        "account management",
+    ]
+
+    if any(term in folded_content for term in requirement_terms):
+        return 0
+    if any(term in folded_content for term in password_terms):
+        return 1
+    if any(term in folded_content for term in credential_terms):
+        return 2
+    if any(term in folded_source for term in preferred_sources) and any(term in combined for term in weak_terms):
+        return 3
+    if any(term in combined for term in weak_terms):
+        return 4
+    return 5
 
 
 def candidate_matches_document(document, candidate: dict) -> bool:
@@ -1414,10 +1749,16 @@ def rank_evidence(documents: list, analysis: QueryAnalysis) -> list:
         catalog_match_priority = catalog_priority(document, analysis)
         section_priority = section_type_priority(document, analysis)
         operational_priority = document_operational_priority(document, analysis)
+        password_priority = (
+            password_policy_priority(document)
+            if "password_policy" in analysis.operational_intents
+            else 0
+        )
         operational_density = -keyword_density(document, operational_keywords)
         source_name = document_source_name(document) if not analysis.document_codes else ""
         return (
             exact_document,
+            password_priority,
             catalog_match_priority,
             section_priority,
             operational_priority,
@@ -1555,6 +1896,8 @@ def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | No
     combined_documents = []
     seen_keys = set()
     result_limit = max(RETRIEVAL_K, 4) if (analysis.operational_intents or analysis.document_discovery_mode) else RETRIEVAL_K
+    if "password_policy" in analysis.operational_intents:
+        result_limit = max(result_limit, 8)
     if analysis.intent == "version_author_mapping":
         result_limit = max(result_limit, 3)
     if analysis.catalog_candidates:
@@ -1609,7 +1952,7 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
 
     print("- selected documents:")
     for index, document in enumerate(debug_info["selected_documents"], start=1):
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
         page_label = f" page {page + 1}" if isinstance(page, int) else ""
         score_label = format_retrieval_score(document)
@@ -1647,10 +1990,53 @@ def print_retrieval_debug(raw_results, debug_info) -> None:
 
     print("- raw semantic candidates:")
     for index, (document, score) in enumerate(raw_results[:RETRIEVAL_FETCH_K], start=1):
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
         page_label = f" page {page + 1}" if isinstance(page, int) else ""
         print(f"  {index}. {source}{page_label} | score: {float(score):.4f}")
+
+
+def safe_debug_retrieval_payload(debug_info: dict) -> dict:
+    selected_documents = debug_info.get("selected_documents") or []
+    source_records = []
+    seen = set()
+    for document in selected_documents:
+        source = document_source_name(document)
+        page = document.metadata.get("page")
+        page_number = page + 1 if isinstance(page, int) else None
+        key = (source, page_number, document.metadata.get("retrieval_method"))
+        if key in seen:
+            continue
+        seen.add(key)
+        page_label = f" page {page_number}" if page_number is not None else ""
+        source_records.append(
+            {
+                "label": f"{source}{page_label}",
+                "filename": source,
+                "page": page_number,
+                "retrieval_method": document.metadata.get("retrieval_method"),
+                "score": format_retrieval_score(document),
+                "keyword_rank": document.metadata.get("keyword_rank"),
+                "section_type": document.metadata.get("section_type"),
+            }
+        )
+
+    strategy = debug_info.get("strategy") or {}
+    return {
+        "expanded_queries": [debug_info.get("expanded_query", "")],
+        "document_codes": debug_info.get("document_codes", []),
+        "section_keywords": debug_info.get("section_keywords", []),
+        "operational_intents": debug_info.get("operational_intents", []),
+        "document_discovery_mode": debug_info.get("document_discovery_mode", False),
+        "retrieval_confidence": debug_info.get("confidence", ""),
+        "retrieval_strategy": {
+            "keyword_limit": strategy.get("keyword_limit"),
+            "fetch_k": strategy.get("fetch_k"),
+            "use_keyword": strategy.get("use_keyword"),
+            "use_semantic": strategy.get("use_semantic"),
+        },
+        "retrieved_sources": source_records,
+    }
 
 
 def version_key(version: str) -> tuple[int, ...]:
@@ -2182,16 +2568,130 @@ def filter_supporting_documents(documents: list, analysis: QueryAnalysis) -> lis
     return supporting_documents or documents
 
 
+SOURCE_SECTION_HEADING = re.compile(
+    r"^\s*(?:#+\s*)?(?:\*\*)?\s*"
+    r"(?:sources?|nguồn|nguon|references?|tài liệu tham khảo|tai lieu tham khao)"
+    r"\s*(?:\*\*)?\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_answer_source_section(answer: str) -> str:
+    """Remove model-generated source sections; API/UI return sources separately."""
+    lines = (answer or "").strip().splitlines()
+    for index, line in enumerate(lines):
+        if SOURCE_SECTION_HEADING.match(line):
+            return "\n".join(lines[:index]).strip()
+
+    inline_source_match = re.search(
+        r"\n\s*(?:\*\*)?\s*(?:sources?|nguồn|nguon|references?|tài liệu tham khảo|tai lieu tham khao)"
+        r"\s*(?:\*\*)?\s*:.*\Z",
+        answer or "",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if inline_source_match:
+        return (answer or "")[: inline_source_match.start()].strip()
+
+    return (answer or "").strip()
+
+
+def normalize_conversation_history(history: list | None, max_messages: int = 10) -> list[dict[str, str]]:
+    if not isinstance(history, list):
+        return []
+
+    normalized = []
+    for item in history[-max_messages:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        normalized.append({"role": role, "content": content[:1200]})
+    return normalized
+
+
+def conversation_state_from_history(history: list[dict[str, str]]) -> dict:
+    state: dict[str, list[str]] = {}
+    for item in reversed(history):
+        codes = extract_document_codes(item["content"])
+        if codes:
+            state["last_document_codes"] = codes
+            break
+
+    for item in reversed(history):
+        if item["role"] != "user":
+            continue
+        sections = detect_requested_sections(item["content"])
+        roles = detect_requested_roles(item["content"])
+        topic = sections or roles
+        if topic:
+            state["last_topic"] = topic
+            break
+
+    return state
+
+
+def format_conversation_history(history: list[dict[str, str]], max_chars: int = 2600) -> str:
+    if not history:
+        return ""
+
+    lines = []
+    remaining = max_chars
+    for item in history:
+        role = "User" if item["role"] == "user" else "Assistant"
+        content = " ".join(item["content"].split())
+        line = f"{role}: {content}"
+        if len(line) > remaining:
+            break
+        lines.append(line)
+        remaining -= len(line) + 1
+    return "\n".join(lines)
+
+
+def build_history_search_context(history: list[dict[str, str]], question: str) -> str:
+    if not history:
+        return question
+
+    recent_lines = []
+    for item in history[-6:]:
+        content = " ".join(item["content"].split())
+        recent_lines.append(f"{item['role']}: {content[:500]}")
+    return "Recent conversation:\n" + "\n".join(recent_lines) + f"\nCurrent question: {question}"
+
+
 def call_llm(
     client: OpenAI,
     question: str,
     context: str,
     concise_retry: bool = False,
     analysis: QueryAnalysis | None = None,
+    memory_context: str = "",
+    conversation_history: list[dict[str, str]] | None = None,
 ):
     operational_hint = build_operational_prompt_hint(analysis) if analysis else ""
     if operational_hint:
         context = f"{operational_hint}\n{context}"
+    memory_section = ""
+    if memory_context.strip():
+        memory_section = (
+            "Ngữ cảnh bộ nhớ hội thoại:\n"
+            f"{memory_context.strip()}\n\n"
+            "Chỉ dùng ngữ cảnh bộ nhớ để hiểu sở thích người dùng hoặc bối cảnh hội thoại. "
+            "Không dùng bộ nhớ để thay thế bằng chứng trong tài liệu.\n\n"
+        )
+    history_context = format_conversation_history(conversation_history or [])
+    history_section = ""
+    if history_context:
+        history_section = (
+            "Recent conversation history:\n"
+            f"{history_context}\n\n"
+            "Use this history only to resolve follow-up references such as this document, that part, "
+            "ý thứ 2, phần đó, or what about scope. The retrieved document context below remains the "
+            "source of truth.\n\n"
+        )
     messages = [
         {
             "role": "system",
@@ -2202,7 +2702,10 @@ def call_llm(
             "content": (
                 "/no_think\n"
                 "Trả lời trực tiếp bằng nội dung cuối cùng. "
-                "Không suy luận nội bộ. Không giải thích quá trình suy luận.\n\n"
+                "Không suy luận nội bộ. Không giải thích quá trình suy luận. "
+                "Không tự thêm phần Sources, Nguồn, References hoặc trích dẫn nguồn ở cuối câu trả lời.\n\n"
+                f"{memory_section}"
+                f"{history_section}"
                 f"Ngữ cảnh tài liệu:\n{context}\n\n"
                 f"Câu hỏi: {question}"
             ),
@@ -2238,7 +2741,45 @@ def answer_question(
     vector_store,
     client: OpenAI,
     conversation_state: dict | None = None,
+    memory_context: str = "",
+    conversation_history: list | None = None,
+    debug_info_out: dict | None = None,
+    metadata_out: dict | None = None,
+    allow_catalog: bool = True,
 ) -> tuple[str, list, object]:
+    normalized_history = normalize_conversation_history(conversation_history)
+    history_state = conversation_state_from_history(normalized_history)
+    if conversation_state:
+        history_state.update(conversation_state)
+    conversation_state = history_state or conversation_state
+
+    catalog_answer = answer_catalog_question(question, vector_store=vector_store) if allow_catalog else None
+    if catalog_answer:
+        if metadata_out is not None:
+            metadata_out.clear()
+            metadata_out.update(
+                {
+                    "answer_type": "catalog",
+                    "question_type": catalog_answer.question_type,
+                    "total_documents": catalog_answer.total_documents,
+                    "documents": catalog_answer.documents,
+                }
+            )
+        if debug_info_out is not None:
+            debug_info_out.clear()
+            debug_info_out.update(
+                {
+                    "answer_type": "catalog",
+                    "total_documents": catalog_answer.total_documents,
+                    "retrieved_sources": [],
+                }
+            )
+        return catalog_answer.answer, [], None
+
+    if metadata_out is not None:
+        metadata_out.clear()
+        metadata_out["answer_type"] = "rag"
+
     analysis = analyze_question(question, conversation_state=conversation_state)
     if analysis.needs_clarification:
         return analysis.clarification_question, [], None
@@ -2247,7 +2788,18 @@ def answer_question(
         conversation_state["last_document_codes"] = analysis.document_codes
         conversation_state["last_topic"] = analysis.requested_sections or analysis.requested_roles
 
-    relevant_documents, raw_results, debug_info = retrieve_documents(question, vector_store, analysis=analysis)
+    retrieval_question = (
+        build_history_search_context(normalized_history, question)
+        if analysis.is_follow_up and normalized_history
+        else question
+    )
+    if retrieval_question != question:
+        analysis.expanded_query = build_history_search_context(normalized_history, analysis.expanded_query)
+
+    relevant_documents, raw_results, debug_info = retrieve_documents(retrieval_question, vector_store, analysis=analysis)
+    if debug_info_out is not None:
+        debug_info_out.clear()
+        debug_info_out.update(safe_debug_retrieval_payload(debug_info))
     print_retrieval_debug(raw_results, debug_info)
 
     if not relevant_documents:
@@ -2261,17 +2813,36 @@ def answer_question(
     if not analysis.operational_intents and not analysis.document_discovery_mode:
         deterministic_answer = build_structured_answer(analysis, context)
     if deterministic_answer:
+        deterministic_answer = strip_answer_source_section(deterministic_answer)
         if validate_answer(deterministic_answer, analysis, relevant_documents):
             return deterministic_answer, filter_supporting_documents(relevant_documents, analysis), None
 
-    response = call_llm(client, question, context, concise_retry=False, analysis=analysis)
+    response = call_llm(
+        client,
+        question,
+        context,
+        concise_retry=False,
+        analysis=analysis,
+        memory_context=memory_context,
+        conversation_history=normalized_history,
+    )
     answer = (response.choices[0].message.content or "").strip()
     if not answer:
-        response = call_llm(client, question, context, concise_retry=True, analysis=analysis)
+        response = call_llm(
+            client,
+            question,
+            context,
+            concise_retry=True,
+            analysis=analysis,
+            memory_context=memory_context,
+            conversation_history=normalized_history,
+        )
         answer = (response.choices[0].message.content or "").strip()
 
     if not answer:
         answer = EMPTY_FINAL_ANSWER
+
+    answer = strip_answer_source_section(answer)
 
     if not validate_answer(answer, analysis, relevant_documents):
         return NO_RELEVANT_CONTEXT_ANSWER, relevant_documents, response.usage
@@ -2284,19 +2855,30 @@ def build_system_prompt(concise_retry: bool = False) -> str:
         return (
             "Bạn là trợ lý RAG. Chỉ trả lời dựa trên ngữ cảnh tài liệu. "
             "Không suy luận, không giải thích quá trình suy luận. Nếu không "
-            "có thông tin, trả lời: Không tìm thấy thông tin này trong tài liệu "
-            "được cung cấp. Trả lời ngắn gọn bằng tiếng Việt."
+            "có thông tin, trả lời: Không tìm thấy thông tin này trong tài liệu hiện có. "
+            "Nếu người dùng hỏi số lượng hoặc danh sách tài liệu trong knowledge base, "
+            "không suy luận từ các chunks truy xuất; chỉ dùng catalog metadata nếu có. "
+            "Không thêm Sources, Nguồn hoặc References trong nội dung trả lời. "
+            "Có thể dùng lịch sử hội thoại gần đây để hiểu câu hỏi nối tiếp, nhưng "
+            "không dùng lịch sử thay thế bằng chứng trong tài liệu. "
+            "Trả lời ngắn gọn bằng tiếng Việt."
         )
 
     grc_navigation_prompt = (
         "You are an internal GRC/ISMS procedure navigator. Users may ask practical "
         "questions without knowing exact document codes. Your job is to map the "
         "question to the most relevant indexed document, explain what the user "
-        "should check or do, and cite sources. Never invent approval flows, ticket "
+        "should check or do. Never invent approval flows, ticket "
         "fields, owners, SLAs, or document codes. If the documents only partially "
         "support the answer, state the limitation clearly. For operational how-to "
         "or which-document questions, recommend document candidates first, then "
-        "summarize the relevant procedure and source page. "
+        "summarize the relevant procedure. Do not include a Sources, Nguồn, "
+        "References, citation, or bibliography section inside the answer text; "
+        "If the user asks about the number/list of documents in the knowledge base, "
+        "do not answer based on retrieved document chunks. Use catalog metadata if "
+        "available; otherwise say the catalog is unavailable. "
+        "the application returns sources separately. Use recent conversation "
+        "history only to resolve follow-up references, not as document evidence. "
     )
 
     if ANSWER_LANGUAGE == "vi":
@@ -2321,14 +2903,24 @@ def build_system_prompt(concise_retry: bool = False) -> str:
             "công ty, tài liệu, tiêu chuẩn, chính sách, quy trình và mã tài "
             "liệu. Trả lời ngắn gọn bằng tiếng Việt, dùng gạch đầu dòng cho "
             "danh sách. Bắt đầu ngay bằng câu trả lời cuối cùng. Không giải "
-            "thích quá trình suy luận hoặc chain-of-thought."
+            "thích quá trình suy luận hoặc chain-of-thought. Không thêm phần "
+            "Sources, Nguồn, References, Tài liệu tham khảo hoặc danh sách nguồn "
+            "trong nội dung trả lời; nguồn sẽ được hiển thị riêng bởi ứng dụng. "
+            "Nếu người dùng hỏi số lượng hoặc danh sách tài liệu trong knowledge base, "
+            "không được suy luận từ các chunks truy xuất; phải dùng catalog metadata "
+            "nếu có, nếu không thì nói catalog không khả dụng. "
+            "Khi câu hỏi là câu hỏi nối tiếp, dùng lịch sử hội thoại gần đây để hiểu "
+            "đối tượng được nhắc tới, nhưng chỉ kết luận bằng bằng chứng trong ngữ cảnh tài liệu."
         )
 
     return grc_navigation_prompt + (
         "You are a helpful RAG assistant. Answer using only the provided "
         "document context. If the answer is not in the context, say you do not "
         "know. Keep the final answer concise. Start immediately with the final "
-        "answer. Do not explain your reasoning."
+        "answer. Do not explain your reasoning. Do not include Sources, "
+        "References, or citation sections in the answer text. If the user asks "
+        "about the number/list of documents in the knowledge base, do not infer "
+        "that from retrieved chunks; use catalog metadata if available."
     )
 
 
@@ -2336,7 +2928,7 @@ def print_sources(documents) -> None:
     seen_keys = set()
     seen_sources = []
     for document in documents:
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
         key = (source, page)
         if key in seen_keys:

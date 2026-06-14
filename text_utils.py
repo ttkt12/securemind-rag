@@ -5,12 +5,17 @@ import unicodedata
 def clean_text(text: str) -> str:
     text = unicodedata.normalize("NFC", text or "")
     text = text.replace("\x00", " ").replace("\ufeff", "")
+    text = re.sub(r"[•●▪▫◦]", "-", text)
 
     # Join words split by PDF line wrapping, e.g. "kinh-\ndoanh".
     text = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "", text)
 
     # Join soft line breaks inside sentences while preserving paragraphs/bullets.
-    text = re.sub(r"([^\n.!?:;])\n(?=[^\n\-•*\d])", r"\1 ", text)
+    text = re.sub(
+        r"([^\n.!?:;])\n(?=\s*(?![-*]\s)(?!\d+(?:[.)]|\.\d+))(?!(?:[A-ZĐ]{2,}|[IVX]+\.)\s)[^\n])",
+        r"\1 ",
+        text,
+    )
 
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

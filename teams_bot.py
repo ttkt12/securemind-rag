@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from aiohttp import web
 from botbuilder.core import (
@@ -12,11 +13,15 @@ from botbuilder.core import (
     MessageFactory,
     TurnContext,
 )
-from botbuilder.schema import Activity
+from botbuilder.schema import Activity, ActivityTypes
 from dotenv import load_dotenv
 
-from config import VECTOR_DB_DIR
-from rag_core import answer_question, load_vector_store, make_client
+from answer_engine import answer_chat
+from catalog_service import catalog_count_payload, catalog_documents_payload
+from config import AI_BASE_URL, AI_MODEL, EMBEDDING_MODEL, MAX_CONTEXT_CHARS, RETRIEVAL_FETCH_K, RETRIEVAL_K, VECTOR_DB_DIR
+from rag_core import document_source_name, load_vector_store, make_client
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 WEB_CHAT_HTML = """<!doctype html>
 <html lang="en">
@@ -210,14 +215,34 @@ def env_is_configured(name: str) -> bool:
     return bool(value and not value.startswith("your_"))
 
 
+def first_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def teams_app_id() -> str:
+    return first_env("MICROSOFT_APP_ID", "TEAMS_BOT_APP_ID", "MS_CLIENT_ID")
+
+
+def teams_app_password() -> str:
+    return first_env("MICROSOFT_APP_PASSWORD", "TEAMS_BOT_APP_PASSWORD", "MS_CLIENT_SECRET")
+
+
+def teams_tenant_id() -> str:
+    return first_env("MICROSOFT_APP_TENANT_ID", "MS_TENANT_ID")
+
+
 def validate_startup_config() -> None:
     print("Teams bot config validation:")
-    missing = []
-    for name in ("TEAMS_BOT_APP_ID", "TEAMS_BOT_APP_PASSWORD"):
-        configured = env_is_configured(name)
-        print(f"- {name}: {'OK' if configured else 'MISSING'}")
-        if not configured:
-            missing.append(name)
+    credential_checks = {
+        "MICROSOFT_APP_ID or TEAMS_BOT_APP_ID": bool(teams_app_id()),
+        "MICROSOFT_APP_PASSWORD or TEAMS_BOT_APP_PASSWORD": bool(teams_app_password()),
+    }
+    for label, configured in credential_checks.items():
+        print(f"- {label}: {'OK' if configured else 'MISSING'}")
 
     index_file = VECTOR_DB_DIR / "index.faiss"
     metadata_file = VECTOR_DB_DIR / "index.pkl"
@@ -227,15 +252,15 @@ def validate_startup_config() -> None:
             "the bot or provide vector_db in the deployment artifact."
         )
 
-    if missing:
-        raise RuntimeError("Missing required Teams bot .env values.")
+    if not all(credential_checks.values()):
+        print("- Microsoft Teams endpoint: DISABLED until bot credentials are configured")
 
 
-def format_sources(sources: list, limit: int = 5) -> str:
+def format_sources(sources: list, limit: int = 3) -> str:
     entries = []
     seen = set()
     for document in sources:
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
         page_label = f" page {page + 1}" if isinstance(page, int) else ""
         label = f"{source}{page_label}"
@@ -252,25 +277,35 @@ def format_sources(sources: list, limit: int = 5) -> str:
     return "\n\nNguồn:\n\n" + "\n".join(f"* {entry}" for entry in entries)
 
 
+def clean_teams_message_text(turn_context: TurnContext) -> str:
+    text = TurnContext.remove_recipient_mention(turn_context.activity) or turn_context.activity.text or ""
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("\u00a0", " ")
+    text = " ".join(text.split())
+    return text.strip()
+
+
 class SecureMindTeamsBot(ActivityHandler):
     def __init__(self, vector_store, client) -> None:
         self.vector_store = vector_store
         self.client = client
 
     async def on_message_activity(self, turn_context: TurnContext) -> None:
-        user_text = (turn_context.activity.text or "").strip()
+        user_text = clean_teams_message_text(turn_context)
         if not user_text:
-            await turn_context.send_activity("Vui lòng nhập câu hỏi.")
+            await turn_context.send_activity("Vui lòng nhập câu hỏi về tài liệu ISMS, bảo mật hoặc tuân thủ.")
             return
 
         try:
-            answer, sources, _usage = await asyncio.to_thread(
-                answer_question,
+            result = await asyncio.to_thread(
+                answer_chat,
                 user_text,
                 self.vector_store,
                 self.client,
             )
-            response_text = f"{answer}{format_sources(sources)}"
+            answer = result.get("answer", "")
+            sources = result.get("sources", [])
+            response_text = f"{answer}{format_sources(sources, limit=3)}"
             await turn_context.send_activity(MessageFactory.text(response_text))
         except Exception:
             await turn_context.send_activity(ERROR_MESSAGE)
@@ -280,25 +315,76 @@ async def health(_request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
-async def web_chat_home(_request: web.Request) -> web.Response:
+async def web_chat_home(_request: web.Request) -> web.StreamResponse:
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return web.FileResponse(index_file)
     return web.Response(text=WEB_CHAT_HTML, content_type="text/html")
 
 
-def web_source_labels(sources: list, limit: int = 5) -> list[str]:
-    labels = []
+def web_source_records(sources: list) -> list[dict]:
+    records = []
     seen = set()
     for document in sources:
-        source = Path(document.metadata.get("source", "unknown")).name
+        source = document_source_name(document)
         page = document.metadata.get("page")
-        page_label = f" page {page + 1}" if isinstance(page, int) else ""
-        label = f"{source}{page_label}"
-        if label in seen:
+        page_number = page + 1 if isinstance(page, int) else None
+        key = (source, page_number)
+        if key in seen:
             continue
-        seen.add(label)
-        labels.append(label)
-        if len(labels) >= limit:
-            break
-    return labels
+        seen.add(key)
+        page_label = f" page {page_number}" if page_number is not None else ""
+        records.append(
+            {
+                "filename": source,
+                "page": page_number,
+                "label": f"{source}{page_label}",
+            }
+        )
+    return records
+
+
+def safe_chat_debug_payload(retrieval_debug: dict) -> dict:
+    base_host = urlparse(AI_BASE_URL).netloc or AI_BASE_URL
+    return {
+        "model_name": AI_MODEL,
+        "ai_base_url_host": base_host,
+        "embedding_model": EMBEDDING_MODEL,
+        "retrieval_k": RETRIEVAL_K,
+        "retrieval_fetch_k": RETRIEVAL_FETCH_K,
+        "max_context_chars": MAX_CONTEXT_CHARS,
+        **retrieval_debug,
+    }
+
+
+def public_chat_metadata(metadata: dict) -> dict:
+    if not metadata:
+        return {"answer_type": "rag"}
+    answer_type = metadata.get("answer_type", "rag")
+    public_metadata = {
+        "answer_type": answer_type,
+        "intent": metadata.get("intent"),
+        "retrieval_used": bool(metadata.get("retrieval_used", answer_type == "rag")),
+        "llm_used": bool(metadata.get("llm_used", answer_type == "rag")),
+    }
+    if answer_type == "catalog":
+        public_metadata["catalog_intent"] = metadata.get("catalog_intent")
+        public_metadata["total_documents"] = metadata.get("total_documents", 0)
+    return public_metadata
+
+
+def create_documents_count_handler():
+    async def documents_count(_request: web.Request) -> web.Response:
+        return web.json_response(catalog_count_payload())
+
+    return documents_count
+
+
+def create_documents_handler():
+    async def documents(_request: web.Request) -> web.Response:
+        return web.json_response(catalog_documents_payload())
+
+    return documents
 
 
 def create_web_chat_handler(vector_store, client):
@@ -314,34 +400,54 @@ def create_web_chat_handler(vector_store, client):
         question = str(body.get("question") or body.get("message") or "").strip()
         if not question:
             return web.json_response({"error": "Question is required."}, status=400)
-
+        session_id = str(body.get("session_id") or "").strip()
+        history = body.get("history")
+        if history is not None and not isinstance(history, list):
+            return web.json_response({"error": "History must be an array when provided."}, status=400)
+        debug_requested = body.get("debug") is True
         try:
-            answer, sources, _usage = await asyncio.to_thread(
-                answer_question,
+            result = await asyncio.to_thread(
+                answer_chat,
                 question,
                 vector_store,
                 client,
+                history=history,
+                session_id=session_id or None,
+                debug=debug_requested,
             )
         except Exception:
             return web.json_response({"error": ERROR_MESSAGE}, status=500)
 
-        return web.json_response(
-            {
-                "answer": answer,
-                "sources": web_source_labels(sources),
-            }
-        )
+        sources = result.get("sources", [])
+        public_metadata = public_chat_metadata(result.get("metadata", {}))
+        payload = {
+            "answer": result.get("answer", ""),
+            "sources": [] if public_metadata.get("answer_type") == "catalog" else web_source_records(sources),
+            "session_id": result.get("session_id"),
+            "answer_type": public_metadata.get("answer_type", "rag"),
+            "metadata": public_metadata,
+        }
+        if debug_requested:
+            payload["debug"] = safe_chat_debug_payload(result.get("debug", {}))
+
+        return web.json_response(payload)
 
     return chat
 
 
-def create_messages_handler(adapter: BotFrameworkAdapter, bot: SecureMindTeamsBot):
+def create_messages_handler(adapter: BotFrameworkAdapter, bot: SecureMindTeamsBot, teams_enabled: bool):
     async def messages(request: web.Request) -> web.Response:
+        if not teams_enabled:
+            return web.Response(status=503, text="Microsoft Teams bot credentials are not configured.")
+
         if "application/json" not in request.headers.get("Content-Type", ""):
             return web.Response(status=415)
 
         body = await request.json()
         activity = Activity().deserialize(body)
+        if activity.type != ActivityTypes.message:
+            return web.Response(status=201)
+
         auth_header = request.headers.get("Authorization", "")
         try:
             response = await adapter.process_activity(activity, auth_header, bot.on_turn)
@@ -367,17 +473,25 @@ def create_app() -> web.Application:
     print("Creating LLM client...")
     client = make_client()
 
-    app_id = os.getenv("TEAMS_BOT_APP_ID", "").strip()
-    app_password = os.getenv("TEAMS_BOT_APP_PASSWORD", "").strip()
-    settings = BotFrameworkAdapterSettings(app_id, app_password)
+    app_id = teams_app_id()
+    app_password = teams_app_password()
+    teams_enabled = bool(app_id and app_password)
+    settings = BotFrameworkAdapterSettings(
+        app_id,
+        app_password,
+        channel_auth_tenant=teams_tenant_id() or None,
+    )
     adapter = BotFrameworkAdapter(settings)
     bot = SecureMindTeamsBot(vector_store, client)
 
     app = web.Application()
     app.router.add_get("/", web_chat_home)
+    app.router.add_static("/static/", path=str(STATIC_DIR), name="static")
     app.router.add_post("/chat", create_web_chat_handler(vector_store, client))
+    app.router.add_get("/documents/count", create_documents_count_handler())
+    app.router.add_get("/documents", create_documents_handler())
     app.router.add_get("/health", health)
-    app.router.add_post("/api/messages", create_messages_handler(adapter, bot))
+    app.router.add_post("/api/messages", create_messages_handler(adapter, bot, teams_enabled))
     return app
 
 

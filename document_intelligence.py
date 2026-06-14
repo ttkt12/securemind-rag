@@ -453,11 +453,16 @@ def catalog_entry_from_chunks(file_name: str, chunks: list[dict], metadata: dict
     versions = extract_version_values(full_text[:12000])
     section_counter = Counter(section for chunk in chunks for section in chunk["section_types"])
     key_sections = extract_heading_lines(full_text[:18000])
+    source_pages = source_pages_for_chunks(chunks)
+    document_id = document_code or Path(file_name).stem
 
     return {
+        "document_id": document_id,
         "document_code": document_code,
         "document_title": document_title,
         "file_name": file_name,
+        "filename": file_name,
+        "source": file_name,
         "document_type": document_type,
         "version": latest_version(versions),
         "latest_version": latest_version(versions),
@@ -473,7 +478,9 @@ def catalog_entry_from_chunks(file_name: str, chunks: list[dict], metadata: dict
         "process_areas": process_areas,
         "section_types": dict(section_counter),
         "likely_user_questions": likely_questions_for_areas(process_areas),
-        "source_pages": source_pages_for_chunks(chunks),
+        "source_pages": source_pages,
+        "page_count": len(source_pages),
+        "chunk_count": len(chunks),
     }
 
 
@@ -491,7 +498,7 @@ def build_document_catalog(vector_store=None) -> list[dict]:
     grouped_metadata: dict[str, dict] = {}
 
     for document in vector_store.docstore._dict.values():
-        file_name = Path(document.metadata.get("source", "unknown")).name
+        file_name = document.metadata.get("source_filename") or Path(document.metadata.get("source", "unknown")).name
         grouped_metadata.setdefault(file_name, dict(document.metadata))
         grouped_chunks[file_name].append(
             {

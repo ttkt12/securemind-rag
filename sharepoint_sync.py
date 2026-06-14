@@ -11,7 +11,8 @@ import requests
 from dotenv import load_dotenv
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
-SCOPES = ["User.Read", "Files.Read.All", "Sites.Read.All"]
+DELEGATED_SCOPES = ["User.Read", "Files.Read.All", "Sites.Read.All"]
+APP_ONLY_SCOPES = ["https://graph.microsoft.com/.default"]
 TOKEN_CACHE_FILE = Path("token_cache.bin")
 MANIFEST_FILE_NAME = "sharepoint_manifest.json"
 _auth_token = None
@@ -31,20 +32,26 @@ def env_is_configured(name: str) -> bool:
 
 def get_auth_flow() -> str:
     auth_flow = os.getenv("MS_AUTH_FLOW", "device_code").strip().lower()
-    if auth_flow != "device_code":
-        raise RuntimeError("Only MS_AUTH_FLOW=device_code is supported by this script.")
+    aliases = {
+        "app": "client_credentials",
+        "app_only": "client_credentials",
+        "application": "client_credentials",
+    }
+    auth_flow = aliases.get(auth_flow, auth_flow)
+    if auth_flow not in {"device_code", "client_credentials"}:
+        raise RuntimeError("MS_AUTH_FLOW must be device_code or client_credentials.")
 
     return auth_flow
 
 
 def validate_config(auth_flow: str) -> None:
-    required_names = [
-        "MS_TENANT_ID",
-        "MS_CLIENT_ID",
-        "SHAREPOINT_HOSTNAME",
-        "SHAREPOINT_SITE_PATH",
-    ]
+    required_names = ["MS_TENANT_ID", "MS_CLIENT_ID"]
+    if auth_flow == "client_credentials":
+        required_names.append("MS_CLIENT_SECRET")
+    if not env_is_configured("SHAREPOINT_SITE_ID"):
+        required_names.extend(["SHAREPOINT_HOSTNAME", "SHAREPOINT_SITE_PATH"])
     print("Config validation:")
+    print(f"- MS_AUTH_FLOW: {auth_flow}")
     missing = []
     for name in required_names:
         configured = env_is_configured(name)
@@ -54,6 +61,8 @@ def validate_config(auth_flow: str) -> None:
 
     folder_path = get_sharepoint_folder_path()
     print(f"- SHAREPOINT_FOLDER_PATH: {'OK' if folder_path else 'EMPTY'}")
+    print(f"- SHAREPOINT_SITE_ID: {'OK' if env_is_configured('SHAREPOINT_SITE_ID') else 'EMPTY'}")
+    print(f"- SHAREPOINT_DRIVE_ID: {'OK' if env_is_configured('SHAREPOINT_DRIVE_ID') else 'EMPTY'}")
 
     if missing:
         raise RuntimeError("Missing required .env values. Update .env and try again.")
@@ -98,10 +107,27 @@ def get_access_token() -> str:
     if _auth_token:
         return _auth_token
 
-    print("Authentication mode: device_code")
+    auth_flow = get_auth_flow()
+    print(f"Authentication mode: {auth_flow}")
     tenant_id = required_env("MS_TENANT_ID")
     client_id = required_env("MS_CLIENT_ID")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
+
+    if auth_flow == "client_credentials":
+        client_secret = required_env("MS_CLIENT_SECRET")
+        app = msal.ConfidentialClientApplication(
+            client_id=client_id,
+            client_credential=client_secret,
+            authority=authority,
+        )
+        result = app.acquire_token_for_client(scopes=APP_ONLY_SCOPES)
+        if "access_token" not in result:
+            error = result.get("error", "authentication_failed")
+            description = result.get("error_description", "No error description returned.")
+            raise RuntimeError(f"Microsoft app-only authentication failed: {error}. {description}")
+        _auth_token = result["access_token"]
+        return _auth_token
+
     cache = load_token_cache()
     app = msal.PublicClientApplication(
         client_id=client_id,
@@ -112,13 +138,13 @@ def get_access_token() -> str:
     accounts = app.get_accounts()
     if accounts:
         for account in accounts:
-            result = app.acquire_token_silent(SCOPES, account=account)
+            result = app.acquire_token_silent(DELEGATED_SCOPES, account=account)
             if result and "access_token" in result:
                 print("Using cached Microsoft Graph token.")
                 _auth_token = result["access_token"]
                 return _auth_token
 
-    flow = app.initiate_device_flow(scopes=SCOPES)
+    flow = app.initiate_device_flow(scopes=DELEGATED_SCOPES)
     if "user_code" not in flow:
         raise RuntimeError("Could not start Microsoft device code flow.")
 
@@ -174,10 +200,54 @@ def get_default_drive(access_token: str, site_id: str) -> dict:
     return drive
 
 
+def get_site_from_env(access_token: str) -> dict:
+    site_id = os.getenv("SHAREPOINT_SITE_ID", "").strip()
+    if site_id:
+        site = graph_json(f"{GRAPH_BASE_URL}/sites/{quote(site_id, safe=':,')}", access_token)
+        print(f"Site found: {site.get('displayName') or site.get('name') or site.get('id')}")
+        return site
+
+    hostname = required_env("SHAREPOINT_HOSTNAME")
+    site_path = required_env("SHAREPOINT_SITE_PATH")
+    return get_site(access_token, hostname, site_path)
+
+
+def get_drive_from_env(access_token: str, site_id: str) -> dict:
+    drive_id = os.getenv("SHAREPOINT_DRIVE_ID", "").strip()
+    if drive_id:
+        drive = graph_json(f"{GRAPH_BASE_URL}/drives/{quote(drive_id, safe='')}", access_token)
+        print(f"Drive found: {drive.get('name') or drive.get('id')}")
+        return drive
+
+    return get_default_drive(access_token, site_id)
+
+
 def get_target_folder(access_token: str, site_id: str, folder_path: str) -> dict:
     print(f"Target folder path: {folder_path}")
     encoded_folder_path = quote(folder_path, safe="/")
     folder_url = f"{GRAPH_BASE_URL}/sites/{site_id}/drive/root:/{encoded_folder_path}"
+
+    try:
+        folder = graph_json(folder_url, access_token)
+    except requests.HTTPError as error:
+        status_code = error.response.status_code if error.response is not None else "unknown"
+        if status_code == 404:
+            raise RuntimeError(f"Cannot find SharePoint folder: {folder_path}") from error
+        raise RuntimeError(
+            f"Cannot resolve SharePoint folder: {folder_path} (HTTP {status_code})"
+        ) from error
+
+    if "folder" not in folder:
+        raise RuntimeError(f"Cannot find SharePoint folder: {folder_path}")
+
+    print(f"Target folder found: {folder.get('name') or folder.get('id')}")
+    return folder
+
+
+def get_target_folder_by_drive(access_token: str, drive_id: str, folder_path: str) -> dict:
+    print(f"Target folder path: {folder_path}")
+    encoded_folder_path = quote(folder_path, safe="/")
+    folder_url = f"{GRAPH_BASE_URL}/drives/{quote(drive_id, safe='')}/root:/{encoded_folder_path}"
 
     try:
         folder = graph_json(folder_url, access_token)
@@ -280,9 +350,12 @@ def download_file(item: dict, local_path: Path, access_token: str) -> None:
 
 
 def manifest_entry_for_item(item: dict, drive_id: str, local_path: Path) -> dict:
+    relative_path = str(local_path).replace("\\", "/")
     return {
         "name": item.get("name"),
         "local_path": str(local_path),
+        "relative_path": relative_path,
+        "drive_item_id": item.get("id"),
         "sharepoint_item_id": item.get("id"),
         "drive_id": drive_id,
         "web_url": item.get("webUrl"),
@@ -357,16 +430,14 @@ def main() -> None:
     load_dotenv()
     auth_flow = get_auth_flow()
     validate_config(auth_flow)
-    hostname = required_env("SHAREPOINT_HOSTNAME")
-    site_path = required_env("SHAREPOINT_SITE_PATH")
     folder_path = get_sharepoint_folder_path()
     download_dir = Path(os.getenv("SHAREPOINT_DOWNLOAD_DIR", "sharepoint_downloads"))
     allowed_extensions = load_allowed_extensions()
 
     access_token = get_access_token()
-    site = get_site(access_token, hostname, site_path)
-    drive = get_default_drive(access_token, site["id"])
-    target_folder = get_target_folder(access_token, site["id"], folder_path) if folder_path else None
+    site = get_site_from_env(access_token)
+    drive = get_drive_from_env(access_token, site["id"])
+    target_folder = get_target_folder_by_drive(access_token, drive["id"], folder_path) if folder_path else None
     start_item_id = target_folder["id"] if target_folder else None
     sync_drive(access_token, drive["id"], download_dir, allowed_extensions, start_item_id=start_item_id)
 

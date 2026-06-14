@@ -1,0 +1,55 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "packageName": "com.securemind.rag",
+  "developer": {
+    "name": "SecureMind",
+    "websiteUrl": "https://REPLACE_WITH_AGENTBASE_DOMAIN",
+    "privacyUrl": "https://REPLACE_WITH_AGENTBASE_DOMAIN",
+    "termsOfUseUrl": "https://REPLACE_WITH_AGENTBASE_DOMAIN"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "SecureMind RAG",
+    "full": "SecureMind RAG"
+  },
+  "description": {
+    "short": "Chatbot for security and compliance documents.",
+    "full": "SecureMind RAG is a Microsoft Teams chatbot for querying security, compliance, ISMS, policy, procedure, and governance documents."
+  },
+  "accentColor": "#146C5F",
+  "bots": [
+    {
+      "botId": "00000000-0000-0000-0000-000000000000",
+      "scopes": [
+        "personal"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal"
+          ],
+          "commands": [
+            {
+              "title": "ask",
+              "description": "Ask a question about ISMS, security, compliance, policy, or procedure documents"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity"
+  ],
+  "validDomains": [
+    "REPLACE_WITH_AGENTBASE_DOMAIN"
+  ]
+}
