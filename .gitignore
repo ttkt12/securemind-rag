@@ -1,5 +1,8 @@
 .env
+.env.*
+!.env.example
 *.env
+.envrc
 .greennode.json
 .agentbase/
 .agentbase-*.txt
@@ -12,6 +15,13 @@ vector_db/
 sharepoint_downloads/
 token_cache.bin
 *.token
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.credentials.json
 .agentbase-state.json
 teams/.package_build/
 securemind-rag-teams-template.zip
