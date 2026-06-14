@@ -4,7 +4,7 @@ from openai import OpenAI
 
 from catalog_service import answer_catalog_count, answer_catalog_list
 from intent_router import detect_intent
-from rag_core import answer_question
+from rag_core import answer_question, load_vector_store, make_client
 
 
 def _debug_metadata(metadata: dict, intent: str, retrieval_used: bool, llm_used: bool) -> dict:
@@ -16,8 +16,8 @@ def _debug_metadata(metadata: dict, intent: str, retrieval_used: bool, llm_used:
 
 def answer_chat(
     question: str,
-    vector_store,
-    client: OpenAI,
+    vector_store=None,
+    client: OpenAI | None = None,
     history: list | None = None,
     session_id: str | None = None,
     debug: bool = False,
@@ -55,6 +55,11 @@ def answer_chat(
                 "llm_used": False,
             }
         return payload
+
+    if vector_store is None:
+        vector_store = load_vector_store()
+    if client is None:
+        client = make_client()
 
     retrieval_debug = {}
     response_metadata = {}

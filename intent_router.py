@@ -35,6 +35,7 @@ CATALOG_LIST_TRIGGERS = [
     "cac tai lieu do",
     "nhung tai lieu do",
     "ke ten tat ca tai lieu do ra",
+    "ke tat ca cac tai lieu do",
     "list documents",
     "list all documents",
     "show all documents",
@@ -79,6 +80,7 @@ def repair_mojibake(text: str) -> str:
 
 
 def strip_accents(text: str) -> str:
+    text = text.replace("đ", "d").replace("Đ", "D")
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(char for char in normalized if not unicodedata.combining(char))
 

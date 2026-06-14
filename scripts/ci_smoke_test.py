@@ -19,6 +19,10 @@ def assert_true(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def u(value: str) -> str:
+    return value.encode("ascii").decode("unicode_escape")
+
+
 def test_catalog_core() -> None:
     count_question = "có tất cả bao nhiêu document trong AI Agent này?"
     list_question = "kể tên tất cả tài liệu đó ra"
@@ -30,9 +34,24 @@ def test_catalog_core() -> None:
         },
     ]
     catalog = load_document_catalog()
-    assert_true(len(catalog) > 0, "document catalog is empty")
+    assert_true(len(catalog) == 52, f"expected 52 catalog documents, got {len(catalog)}")
     assert_true(detect_intent(count_question) == "catalog_count", "count intent not detected")
     assert_true(detect_intent(list_question, history) == "catalog_list", "list intent not detected")
+
+    vietnamese_list_phrases = [
+        r"k\u1ec3 t\u00ean",
+        r"li\u1ec7t k\u00ea",
+        r"danh s\u00e1ch",
+        r"t\u1ea5t c\u1ea3 t\u00e0i li\u1ec7u",
+        r"to\u00e0n b\u1ed9 t\u00e0i li\u1ec7u",
+        r"t\u00e0i li\u1ec7u \u0111\u00f3",
+        r"c\u00e1c t\u00e0i li\u1ec7u \u0111\u00f3",
+        r"nh\u1eefng t\u00e0i li\u1ec7u \u0111\u00f3",
+        r"k\u1ec3 t\u00ean t\u1ea5t c\u1ea3 t\u00e0i li\u1ec7u \u0111\u00f3 ra",
+        r"k\u1ec3 t\u1ea5t c\u1ea3 c\u00e1c t\u00e0i li\u1ec7u \u0111\u00f3",
+    ]
+    for phrase in vietnamese_list_phrases:
+        assert_true(detect_intent(u(phrase), history) == "catalog_list", f"list phrase missed: {phrase}")
 
     list_phrases = [
         "ká»ƒ tĂªn",
@@ -62,6 +81,15 @@ def test_catalog_core() -> None:
     for phrase in list_phrases:
         assert_true(detect_intent(phrase, history) == "catalog_list", f"list phrase missed: {phrase}")
 
+    vietnamese_count_phrases = [
+        r"bao nhi\u00eau document",
+        r"bao nhi\u00eau t\u00e0i li\u1ec7u",
+        r"c\u00f3 t\u1ea5t c\u1ea3 bao nhi\u00eau",
+        r"t\u1ed5ng s\u1ed1 t\u00e0i li\u1ec7u",
+    ]
+    for phrase in vietnamese_count_phrases:
+        assert_true(detect_intent(u(phrase)) == "catalog_count", f"count phrase missed: {phrase}")
+
     count_phrases = [
         "bao nhiĂªu document",
         "bao nhieu document",
@@ -90,6 +118,7 @@ def test_catalog_answers(vector_store, client) -> None:
     )
     count_meta = count_response.get("metadata", {})
     assert_true(count_meta.get("answer_type") == "catalog", "catalog count answer_type mismatch")
+    assert_true(count_meta.get("catalog_intent") == "count", "catalog count intent mismatch")
     assert_true(count_meta.get("retrieval_used") is False, "catalog count used retrieval")
     assert_true(count_meta.get("llm_used") is False, "catalog count used LLM")
     assert_true(count_response.get("sources") == [], "catalog count returned sources")
@@ -114,6 +143,12 @@ def test_catalog_answers(vector_store, client) -> None:
     assert_true(list_meta.get("llm_used") is False, "catalog list used LLM")
     assert_true(list_response.get("sources") == [], "catalog list returned sources")
     assert_true(str(total) in list_response.get("answer", ""), "catalog list did not include total")
+    catalog = load_document_catalog()
+    assert_true(total == len(catalog) == 52, f"catalog list total mismatch: {total}")
+    answer_text = list_response.get("answer", "")
+    for document in catalog:
+        expected = document.get("code") or document.get("title") or document.get("filename")
+        assert_true(expected in answer_text, f"catalog list missing document: {expected}")
     print("Catalog answer tests: OK")
 
 

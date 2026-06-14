@@ -7,6 +7,14 @@ import time
 import urllib.request
 
 
+def get_text(url: str, timeout: int = 30) -> str:
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        body = response.read().decode("utf-8")
+        if response.status != 200:
+            raise RuntimeError(f"GET {url} returned HTTP {response.status}")
+        return body
+
+
 def get_json(url: str, timeout: int = 30) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as response:
         body = response.read().decode("utf-8")
@@ -53,6 +61,8 @@ def main() -> None:
 
     count = get_json(f"{base_url}/documents/count")
     assert_true(int(count.get("total_documents", 0)) > 0, "documents count is empty")
+    home = get_text(f"{base_url}/")
+    assert_true("SecureMind RAG" in home, "web UI home did not load")
 
     catalog_count = post_json(
         f"{base_url}/chat",
@@ -64,7 +74,17 @@ def main() -> None:
     assert_true(count_meta.get("llm_used") is False, "catalog count used LLM")
     assert_true(catalog_count.get("sources") == [], "catalog count returned sources")
 
-    catalog_list = post_json(
+    catalog_list_direct = post_json(
+        f"{base_url}/chat",
+        {"question": "list all documents", "debug": True},
+    )
+    direct_list_meta = catalog_list_direct.get("metadata", {})
+    assert_true(direct_list_meta.get("catalog_intent") == "list", "direct catalog list did not route to catalog list")
+    assert_true(direct_list_meta.get("retrieval_used") is False, "direct catalog list used retrieval")
+    assert_true(direct_list_meta.get("llm_used") is False, "direct catalog list used LLM")
+    assert_true(catalog_list_direct.get("sources") == [], "direct catalog list returned sources")
+
+    catalog_list_follow_up = post_json(
         f"{base_url}/chat",
         {
             "question": "kể tên tất cả tài liệu đó ra",
@@ -75,10 +95,11 @@ def main() -> None:
             "debug": True,
         },
     )
-    list_meta = catalog_list.get("metadata", {})
-    assert_true(list_meta.get("catalog_intent") == "list", "catalog list did not route to catalog list")
-    assert_true(list_meta.get("retrieval_used") is False, "catalog list used retrieval")
-    assert_true(list_meta.get("llm_used") is False, "catalog list used LLM")
+    follow_up_list_meta = catalog_list_follow_up.get("metadata", {})
+    assert_true(follow_up_list_meta.get("catalog_intent") == "list", "follow-up catalog list did not route to catalog list")
+    assert_true(follow_up_list_meta.get("retrieval_used") is False, "follow-up catalog list used retrieval")
+    assert_true(follow_up_list_meta.get("llm_used") is False, "follow-up catalog list used LLM")
+    assert_true(catalog_list_follow_up.get("sources") == [], "follow-up catalog list returned sources")
 
     scope = post_json(
         f"{base_url}/chat",
