@@ -9,53 +9,66 @@
 </head>
 <body>
   <main class="app-shell">
-    <section class="intro-panel" aria-label="SecureMind RAG overview">
-      <div class="brand-lockup">
+    <aside class="control-rail" aria-label="SecureMind RAG workspace">
+      <header class="brand-block">
         <div class="brand-mark" aria-hidden="true">SM</div>
-        <div>
+        <div class="brand-copy">
           <p class="brand-name">SecureMind RAG</p>
-          <p class="brand-tagline">Ask questions from ISMS documents</p>
+          <p class="brand-subtitle">ISMS Knowledge Assistant</p>
         </div>
-      </div>
+      </header>
 
-      <div class="hero-copy">
-        <h1>SecureMind RAG</h1>
-        <p>
-          A focused internal assistant for security, compliance, ISMS, policy,
-          procedure, and governance documents.
-        </p>
-      </div>
-
-      <div class="sidebar-workspace">
-        <div class="session-toolbar">
-          <button class="new-chat-button" id="new-chat" type="button">New chat</button>
-          <button class="clear-sessions-button" id="clear-sessions" type="button">Clear</button>
+      <section class="corpus-card" aria-label="Knowledge base status">
+        <p class="eyebrow">Corpus</p>
+        <div class="corpus-count">
+          <span id="document-count">--</span>
+          <span>documents</span>
         </div>
+        <p class="corpus-note" id="corpus-note">Checking knowledge catalog...</p>
+      </section>
 
-        <div class="session-block" aria-label="Chat sessions">
-          <p class="sidebar-label">Sessions</p>
-          <div class="session-list" id="session-list"></div>
+      <section class="access-card" id="access-card" aria-label="App access token">
+        <button class="access-toggle" id="access-toggle" type="button" aria-expanded="false">
+          Access token
+          <span id="access-state">Not set</span>
+        </button>
+        <div class="access-fields" id="access-fields" hidden>
+          <label for="access-token">X-App-Access-Token</label>
+          <div class="token-row">
+            <input id="access-token" type="password" autocomplete="off" placeholder="Paste token for this browser session">
+            <button id="save-token" type="button">Save</button>
+          </div>
+          <button class="clear-token" id="clear-token" type="button">Clear token</button>
         </div>
+      </section>
 
-      </div>
-    </section>
+      <section class="session-tools" aria-label="Chat controls">
+        <button class="primary-action" id="new-chat" type="button">New chat</button>
+        <button class="secondary-action" id="clear-sessions" type="button">Clear</button>
+      </section>
 
-    <section class="chat-panel" aria-label="SecureMind chat">
-      <div class="chat-header">
+      <section class="session-block" aria-label="Chat sessions">
+        <div class="section-heading">
+          <p class="eyebrow">Sessions</p>
+          <span id="session-count">0</span>
+        </div>
+        <div class="session-list" id="session-list"></div>
+      </section>
+    </aside>
+
+    <section class="chat-workspace" aria-label="SecureMind chat">
+      <header class="chat-topbar">
         <div>
-          <p class="surface-label">Document intelligence</p>
-          <h2>Ask the ISMS knowledge base</h2>
+          <p class="eyebrow">Internal security knowledge</p>
+          <h1>Ask the ISMS knowledge base</h1>
         </div>
-        <span class="status-pill" id="status-pill">Ready</span>
-      </div>
+        <div class="topbar-actions">
+          <span class="status-pill" id="status-pill">Ready</span>
+          <button class="retry-button" id="retry-last" type="button" disabled>Retry</button>
+        </div>
+      </header>
 
-      <div class="messages" id="messages" aria-live="polite" aria-label="Conversation">
-        <div class="empty-state" id="empty-state">
-          <p class="empty-title">Ask about an ISMS, policy, procedure, or security document.</p>
-          <p class="empty-copy">Answers come from retrieved document context and include source references when available.</p>
-          <div class="empty-examples" aria-label="Example questions"></div>
-        </div>
-      </div>
+      <div class="messages" id="messages" aria-live="polite" aria-label="Conversation"></div>
 
       <form class="composer" id="chat-form">
         <label class="sr-only" for="question">Question</label>
@@ -63,12 +76,12 @@
           id="question"
           name="question"
           rows="2"
-          placeholder="Ask about a security, compliance, ISMS, policy, or procedure document"
+          placeholder="Ask about ISO 27001, ISMS scope, password policy, audit evidence, or a document code"
           autocomplete="off"
           required
         ></textarea>
         <button id="send" class="send-button" type="submit" disabled>
-          <span>Send</span>
+          Send
         </button>
       </form>
     </section>

@@ -1,4 +1,4 @@
-﻿const form = document.getElementById("chat-form");
+const form = document.getElementById("chat-form");
 const input = document.getElementById("question");
 const button = document.getElementById("send");
 const messages = document.getElementById("messages");
@@ -6,18 +6,40 @@ const statusPill = document.getElementById("status-pill");
 const newChatButton = document.getElementById("new-chat");
 const clearSessionsButton = document.getElementById("clear-sessions");
 const sessionList = document.getElementById("session-list");
+const sessionCount = document.getElementById("session-count");
+const retryLastButton = document.getElementById("retry-last");
+const documentCount = document.getElementById("document-count");
+const corpusNote = document.getElementById("corpus-note");
+const accessToggle = document.getElementById("access-toggle");
+const accessFields = document.getElementById("access-fields");
+const accessTokenInput = document.getElementById("access-token");
+const saveTokenButton = document.getElementById("save-token");
+const clearTokenButton = document.getElementById("clear-token");
+const accessState = document.getElementById("access-state");
 
-const storageKey = "securemind-rag:sessions:v1";
+const storageKey = "securemind-rag:sessions:v2";
+const tokenKey = "securemind-rag:access-token";
 const maxHistoryMessages = 10;
 const safeError = "I could not get an answer right now. Please try again.";
 const exampleQuestions = [
   "can you tell me scope of ZION-QT-08",
   "quy dinh ve mat khau la gi?",
-  "password policy requirements la gi?",
+  "co tat ca bao nhieu document trong AI Agent nay?",
+  "list all documents",
 ];
 
 let sessions = [];
 let activeSessionId = "";
+let lastSubmittedQuestion = "";
+
+function appHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = sessionStorage.getItem(tokenKey);
+  if (token) {
+    headers["X-App-Access-Token"] = token;
+  }
+  return headers;
+}
 
 function setStatus(label) {
   statusPill.textContent = label;
@@ -28,7 +50,7 @@ function nowIso() {
 }
 
 function makeId() {
-  if (window.crypto && window.crypto.randomUUID) {
+  if (window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
   }
   return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -39,7 +61,7 @@ function titleFromQuestion(question) {
   if (!title) {
     return "New chat";
   }
-  return title.length > 46 ? `${title.slice(0, 43)}...` : title;
+  return title.length > 48 ? `${title.slice(0, 45)}...` : title;
 }
 
 function formatTime(iso) {
@@ -105,6 +127,7 @@ function activeSession() {
 
 function updateButtonState() {
   button.disabled = input.value.trim().length === 0 || button.dataset.loading === "true";
+  retryLastButton.disabled = !lastSubmittedQuestion || button.dataset.loading === "true";
 }
 
 function appendInlineMarkdown(parent, text) {
@@ -132,10 +155,9 @@ function createParagraph(lines) {
 function createFormattedAnswer(text) {
   const block = document.createElement("div");
   block.className = "message-text formatted-answer";
-
   const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
   let paragraphLines = [];
-  const listStack = [];
+  let currentList = null;
 
   function flushParagraph() {
     if (paragraphLines.length) {
@@ -144,51 +166,32 @@ function createFormattedAnswer(text) {
     }
   }
 
-  function closeLists() {
-    listStack.length = 0;
-  }
-
-  function currentList() {
-    return listStack[listStack.length - 1] || null;
-  }
-
-  function ensureList(indent) {
-    while (listStack.length && indent < currentList().indent) {
-      listStack.pop();
-    }
-
-    if (listStack.length && indent === currentList().indent) {
-      return currentList();
-    }
-
-    const list = document.createElement("ul");
-    const parent = currentList()?.lastItem || block;
-    parent.appendChild(list);
-    const entry = { indent, list, lastItem: null };
-    listStack.push(entry);
-    return entry;
+  function closeList() {
+    currentList = null;
   }
 
   lines.forEach((rawLine) => {
     const line = rawLine.trim();
     if (!line) {
       flushParagraph();
-      closeLists();
+      closeList();
       return;
     }
 
-    const bullet = rawLine.match(/^(\s*)(?:[-*\u2022]|\d+[.)])\s+(.+)$/);
+    const bullet = rawLine.match(/^\s*(?:[-*\u2022]|\d+[.)])\s+(.+)$/);
     if (bullet) {
       flushParagraph();
-      const listEntry = ensureList(bullet[1].length);
+      if (!currentList) {
+        currentList = document.createElement("ul");
+        block.appendChild(currentList);
+      }
       const item = document.createElement("li");
-      appendInlineMarkdown(item, bullet[2].trim());
-      listEntry.list.appendChild(item);
-      listEntry.lastItem = item;
+      appendInlineMarkdown(item, bullet[1].trim());
+      currentList.appendChild(item);
       return;
     }
 
-    closeLists();
+    closeList();
     paragraphLines.push(line);
   });
 
@@ -201,27 +204,53 @@ function createFormattedAnswer(text) {
   return block;
 }
 
+function extractDocumentCode(text) {
+  const match = String(text || "").match(/\b[A-Z]{2,10}-[A-Z]{2,10}-\d{2,3}\b/i);
+  return match ? match[0].toUpperCase() : "";
+}
+
 function normalizeSource(source) {
   if (source && typeof source === "object") {
-    const filename = source.filename ? String(source.filename) : "";
+    const filename = source.filename ? String(source.filename).split(/[\\/]/).pop() : "";
     const page = Number.isInteger(source.page) ? source.page : null;
     const label = source.label ? String(source.label) : `${filename}${page ? ` page ${page}` : ""}`.trim();
-    return { filename, page, label: label || "Unknown source" };
+    return {
+      filename,
+      page,
+      label: label || "Unknown source",
+      code: source.code || extractDocumentCode(`${filename} ${label}`),
+    };
   }
 
+  const label = String(source || "Unknown source");
   return {
-    filename: "",
+    filename: label.split(/[\\/]/).pop(),
     page: null,
-    label: String(source || "Unknown source"),
+    label,
+    code: extractDocumentCode(label),
   };
 }
 
+function uniqueSources(sources) {
+  const seen = new Set();
+  const output = [];
+  sources.map(normalizeSource).forEach((source) => {
+    const key = `${source.filename}|${source.page ?? ""}|${source.code}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    output.push(source);
+  });
+  return output;
+}
+
 function appendSources(bubble, sources) {
-  if (!Array.isArray(sources) || sources.length === 0) {
+  const normalizedSources = uniqueSources(Array.isArray(sources) ? sources : []);
+  if (!normalizedSources.length) {
     return;
   }
 
-  const normalizedSources = sources.map(normalizeSource);
   let expanded = false;
   const sourceWrap = document.createElement("section");
   sourceWrap.className = "sources";
@@ -241,7 +270,24 @@ function appendSources(bubble, sources) {
     visibleSources.forEach((source) => {
       const card = document.createElement("div");
       card.className = "source-card";
-      card.textContent = source.label;
+
+      const sourceTitle = document.createElement("div");
+      sourceTitle.className = "source-title";
+      sourceTitle.textContent = source.filename || source.label;
+
+      const details = [];
+      if (source.code) {
+        details.push(source.code);
+      }
+      if (source.page) {
+        details.push(`page ${source.page}`);
+      }
+
+      const sourceMeta = document.createElement("div");
+      sourceMeta.className = "source-meta";
+      sourceMeta.textContent = details.length ? details.join(" / ") : "retrieved document";
+
+      card.append(sourceTitle, sourceMeta);
       list.appendChild(card);
     });
   }
@@ -269,16 +315,14 @@ function createEmptyState() {
   const state = document.createElement("div");
   state.className = "empty-state";
 
-  const title = document.createElement("p");
-  title.className = "empty-title";
-  title.textContent = "Ask about an ISMS, policy, procedure, or security document.";
+  const title = document.createElement("h2");
+  title.textContent = "Search policy, procedure, and audit knowledge with source-backed answers.";
 
   const copy = document.createElement("p");
-  copy.className = "empty-copy";
-  copy.textContent = "Answers come from retrieved document context and include source references when available.";
+  copy.textContent = "Start with a document code, a policy topic, or a catalog question. Sources appear below each answer when the response uses RAG retrieval.";
 
   const exampleWrap = document.createElement("div");
-  exampleWrap.className = "empty-examples";
+  exampleWrap.className = "example-grid";
   exampleWrap.setAttribute("aria-label", "Example questions");
   exampleQuestions.forEach((question) => {
     const chip = document.createElement("button");
@@ -304,7 +348,7 @@ function removeEmptyState() {
 function appendCatalogLabel(bubble, metadata = {}) {
   const label = document.createElement("div");
   label.className = "answer-label";
-  const total = Number.isInteger(metadata.total_documents) ? ` - ${metadata.total_documents} documents` : "";
+  const total = Number.isInteger(metadata.total_documents) ? ` / ${metadata.total_documents} documents` : "";
   label.textContent = `Document catalog${total}`;
   bubble.appendChild(label);
 }
@@ -364,6 +408,7 @@ function renderMessages() {
 
 function renderSessions() {
   sessionList.replaceChildren();
+  sessionCount.textContent = String(sessions.length);
   sessions
     .slice()
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
@@ -381,7 +426,7 @@ function renderSessions() {
 
       const meta = document.createElement("span");
       meta.className = "session-meta";
-      meta.textContent = `${session.messages.length} messages - ${formatTime(session.updated_at)}`;
+      meta.textContent = `${session.messages.length} messages / ${formatTime(session.updated_at)}`;
 
       item.append(title, meta);
       item.addEventListener("click", () => {
@@ -417,9 +462,44 @@ function historyForRequest(session) {
     }));
 }
 
+function showAccessPanel() {
+  accessFields.hidden = false;
+  accessToggle.setAttribute("aria-expanded", "true");
+}
+
+function updateAccessState() {
+  const token = sessionStorage.getItem(tokenKey);
+  accessState.textContent = token ? "Set" : "Not set";
+  accessTokenInput.value = token || "";
+}
+
+async function loadDocumentCount() {
+  try {
+    const response = await fetch("/documents/count", {
+      headers: appHeaders(),
+    });
+    if (response.status === 401 || response.status === 403) {
+      corpusNote.textContent = "Access token required for catalog status.";
+      showAccessPanel();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error("count unavailable");
+    }
+    const payload = await response.json();
+    const total = Number(payload.total_documents);
+    documentCount.textContent = Number.isFinite(total) ? String(total) : "--";
+    corpusNote.textContent = "Catalog endpoint is available.";
+  } catch (_error) {
+    documentCount.textContent = "--";
+    corpusNote.textContent = "Catalog status is unavailable.";
+  }
+}
+
 async function ask(question) {
   const session = activeSession();
   const previousHistory = historyForRequest(session);
+  lastSubmittedQuestion = question;
 
   if (!session.messages.length || session.title === "New chat") {
     session.title = titleFromQuestion(question);
@@ -433,7 +513,7 @@ async function ask(question) {
 
   const loadingRow = appendMessage({
     role: "assistant",
-    content: "Searching documents...",
+    content: "Searching policy evidence...",
     status: "loading",
   });
 
@@ -444,7 +524,7 @@ async function ask(question) {
   try {
     const response = await fetch("/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: appHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         question,
         session_id: session.session_id,
@@ -457,6 +537,11 @@ async function ask(question) {
       payload = await response.json();
     } catch (_error) {
       payload = {};
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      showAccessPanel();
+      throw new Error("Access token required. Enter it in the left panel and retry.");
     }
 
     if (!response.ok) {
@@ -524,15 +609,45 @@ clearSessionsButton.addEventListener("click", () => {
   const session = createSession();
   sessions = [session];
   activeSessionId = session.session_id;
+  lastSubmittedQuestion = "";
   saveSessions();
   renderSessions();
   renderMessages();
+  updateButtonState();
   input.focus();
+});
+
+retryLastButton.addEventListener("click", () => {
+  if (lastSubmittedQuestion && button.dataset.loading !== "true") {
+    ask(lastSubmittedQuestion);
+  }
+});
+
+accessToggle.addEventListener("click", () => {
+  const expanded = accessToggle.getAttribute("aria-expanded") === "true";
+  accessFields.hidden = expanded;
+  accessToggle.setAttribute("aria-expanded", String(!expanded));
+});
+
+saveTokenButton.addEventListener("click", () => {
+  const token = accessTokenInput.value.trim();
+  if (token) {
+    sessionStorage.setItem(tokenKey, token);
+  }
+  updateAccessState();
+  loadDocumentCount();
+});
+
+clearTokenButton.addEventListener("click", () => {
+  sessionStorage.removeItem(tokenKey);
+  updateAccessState();
+  loadDocumentCount();
 });
 
 button.dataset.loading = "false";
 loadSessions();
+updateAccessState();
 renderSessions();
 renderMessages();
 updateButtonState();
-
+loadDocumentCount();
