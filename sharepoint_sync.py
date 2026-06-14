@@ -444,6 +444,12 @@ def sync_drive(
 def main() -> None:
     load_dotenv()
     auth_flow = get_auth_flow()
+    print("SharePoint sync is intended for local manual device_code flow.")
+    if os.getenv("GITHUB_ACTIONS") == "true" and auth_flow == "device_code":
+        raise RuntimeError(
+            "device_code is interactive and not supported in GitHub Actions. "
+            "Run SharePoint sync locally instead."
+        )
     validate_config(auth_flow)
     folder_path = get_sharepoint_folder_path()
     download_dir = Path(os.getenv("SHAREPOINT_DOWNLOAD_DIR", "sharepoint_downloads"))

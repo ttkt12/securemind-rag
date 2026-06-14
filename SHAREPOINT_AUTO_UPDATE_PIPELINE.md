@@ -1,252 +1,149 @@
-# SharePoint Auto-Update Pipeline
+# SharePoint Local Knowledge Update
 
-SecureMind RAG treats SharePoint as the single source of truth for official documents. GitHub stores source code, workflow files, and non-secret deployment metadata only. PDFs and other raw SharePoint documents must not be committed to GitHub.
+SecureMind RAG now uses a local-only SharePoint sync design.
 
-## Architecture
+SharePoint remains the source of truth for official ISMS, security, compliance, policy, procedure, and governance documents. GitHub Actions no longer connects to SharePoint and no longer uses Microsoft Graph `client_credentials` / app-only sync.
+
+## Current Architecture
 
 ```text
-GitHub Actions schedule / manual dispatch / code push
-↓
-Microsoft Graph app-only auth
-↓
-Sync configured SharePoint folder into sharepoint_downloads/
-↓
-Compute knowledge_manifest.json from SharePoint metadata + file hashes
-↓
-Compare with last_deployed_manifest.json
-↓
-If changed or knowledge code changed:
-  rebuild vector_db
-  rebuild document_catalog.json
-  run smoke tests
-  build Docker image
-  push image to AgentBase Container Registry
-  update existing AgentBase runtime
-  verify production endpoints
-↓
-If unchanged:
-  print "Knowledge base is up to date."
+Developer machine
+  |
+  | MS_AUTH_FLOW=device_code
+  v
+Microsoft user login
+  |
+  v
+SharePoint ISMS Portal
+  |
+  v
+sharepoint_downloads/
+  |
+  v
+python ingest.py
+  |
+  v
+vector_db/
+  |
+  v
+python build_document_catalog.py
+  |
+  v
+document_catalog.json
+  |
+  v
+manual AgentBase runtime update when needed
 ```
 
-## Source Of Truth
+GitHub Actions is now used for repository checks only:
 
-- SharePoint stores official ISMS, security, compliance, policy, procedure, and governance documents.
-- GitHub stores application code and CI/CD workflow only.
-- `sharepoint_downloads/` is a temporary sync folder.
-- `document_catalog.json` and `vector_db/` are generated knowledge artifacts.
-- Raw downloaded documents are excluded from Docker and Git by default.
+- security audit
+- Python compile checks
+- catalog-only smoke tests
+- optional verification of the existing AgentBase runtime
 
-## Required Microsoft Graph Permissions
+GitHub Actions does not:
 
-Use an app registration or service principal with application permissions suitable for the target SharePoint site:
+- call Microsoft Graph SharePoint endpoints
+- run `sharepoint_sync.py`
+- run `scripts/graph_auth_diagnostic.py`
+- require `MS_CLIENT_SECRET` for SharePoint
+- rebuild `vector_db/` from SharePoint
+- create a duplicate AgentBase runtime
 
-- `Sites.Read.All` or a narrower site-scoped equivalent approved by IT.
-- `Files.Read.All` if required by the tenant policy.
-- Admin consent granted for application permissions.
+## Local SharePoint Sync
 
-For least privilege, ask IT for site-scoped Graph access to the ISMS Portal document library if possible.
+Use local interactive auth:
 
-## Authentication Modes
+```env
+MS_AUTH_FLOW=device_code
+```
 
-SecureMind RAG separates local SharePoint sync from CI SharePoint sync:
+Then run:
 
-- Local mode: `MS_AUTH_FLOW=device_code`
-  - Use this when running `python sharepoint_sync.py` on your own machine.
-  - It uses an interactive Microsoft user login.
-  - Local success proves your user account can access SharePoint, but it does not prove the GitHub Actions app registration has app-only permission.
-- CI mode: `MS_AUTH_FLOW=client_credentials`
-  - GitHub Actions uses this mode.
-  - It must not require interactive login.
-  - It requires `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET` from GitHub Secrets.
-  - `MS_CLIENT_SECRET` must be the client secret value, not the Secret ID shown in Microsoft Entra.
+```powershell
+python scripts/local_sync_knowledge.py
+```
 
-The workflow runs `scripts/graph_auth_diagnostic.py` before the full sync. This diagnostic first tests token acquisition, then separately tests SharePoint site/drive/folder access.
+The helper runs:
 
-## Required GitHub Secrets
+1. `python sharepoint_sync.py`
+2. `python ingest.py`
+3. `python build_document_catalog.py`
+4. `python scripts/ci_smoke_test.py --catalog-only`
 
-Microsoft / SharePoint:
+It prints only a safe summary:
+
+- document count
+- downloaded file count
+- vector DB path
+
+It does not print tokens, secrets, API keys, or raw document content.
+
+## Required Local Configuration
+
+The local `.env` should contain SharePoint settings for your user login:
+
+- `MS_AUTH_FLOW=device_code`
+- `MS_TENANT_ID`
+- `MS_CLIENT_ID`
+- `SHAREPOINT_HOSTNAME`
+- `SHAREPOINT_SITE_PATH`
+- `SHAREPOINT_FOLDER_PATH`
+- `SHAREPOINT_DOWNLOAD_DIR`
+- `PAPERS_DIR=sharepoint_downloads`
+
+`MS_CLIENT_SECRET` is not required for local `device_code` sync.
+
+## GitHub Actions Configuration
+
+CI no longer needs SharePoint client credentials. Do not add these as required CI secrets for SharePoint sync:
 
 - `MS_TENANT_ID`
 - `MS_CLIENT_ID`
 - `MS_CLIENT_SECRET`
 - `SHAREPOINT_SITE_ID`
 - `SHAREPOINT_DRIVE_ID`
+- `SHAREPOINT_HOSTNAME`
+- `SHAREPOINT_SITE_PATH`
 - `SHAREPOINT_FOLDER_PATH`
-- Optional fallback: `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`
 
-GreenNode / AgentBase:
+CI may still use non-SharePoint secrets for optional production verification or future deployment tasks, such as:
 
-- `GREENNODE_CLIENT_ID`
-- `GREENNODE_CLIENT_SECRET`
-- `AGENTBASE_RUNTIME_ID`
 - `AGENTBASE_ENDPOINT_URL`
-- Optional: `AGENTBASE_RUNTIME_FLAVOR`
-
-AI Platform runtime:
-
 - `AI_PLATFORM_API_KEY`
 - `AI_PLATFORM_BASE_URL`
 - `AI_PLATFORM_MODEL`
+- Teams bot runtime secrets if a deployment workflow explicitly needs them
 
-Teams runtime, if the Teams endpoint is enabled:
+## Deployment Artifact Policy
 
-- `TEAMS_BOT_APP_ID`
-- `TEAMS_BOT_APP_PASSWORD`
+`vector_db/` is not tracked in Git because it is generated and can contain sensitive knowledge-derived embeddings.
 
-Do not store `.env` in GitHub. Do not print or echo secret values in workflow logs.
+Because CI no longer syncs SharePoint and no longer has `vector_db/`, the safe default is:
 
-## Change Detection
+- CI checks code only.
+- CI does not build or deploy a new AgentBase image that would omit the knowledge base.
+- The existing AgentBase runtime remains unchanged until you perform a manual knowledge/runtime update.
 
-The workflow creates `knowledge_manifest.json` from:
+To update production knowledge, run the local knowledge update flow first, then deploy the existing AgentBase runtime with an artifact/image that includes the refreshed `vector_db/` and `document_catalog.json`.
 
-- SharePoint drive item id
-- filename
-- relative path
-- size
-- last modified time
-- `eTag` / `cTag`
-- SHA-256 hash of downloaded file
+## Tradeoff
 
-It compares this with `last_deployed_manifest.json`.
+This design is more conservative and avoids storing Microsoft SharePoint app-only credentials in CI.
 
-- SharePoint manifest changed: rebuild knowledge base and deploy.
-- Knowledge pipeline code changed: rebuild knowledge base and deploy.
-- UI/Docker-only code changed: build and deploy without necessarily rebuilding vector DB.
-- No changes: skip deploy and print `Knowledge base is up to date.`
-
-`last_deployed_manifest.json` contains non-secret metadata only. The workflow commits it after a successful rebuild/deploy so the next run can compare deterministically.
-
-## Manual Trigger
-
-In GitHub:
-
-1. Open the repository.
-2. Go to `Actions`.
-3. Select `SharePoint knowledge update`.
-4. Click `Run workflow`.
-5. Set `force_rebuild=true` if you want to rebuild even when the manifest appears unchanged.
-
-## Force Rebuild
-
-Use the manual workflow input:
-
-```text
-force_rebuild=true
-```
-
-This forces:
-
-- SharePoint sync
-- vector DB rebuild
-- document catalog rebuild
-- smoke tests
-- Docker build
-- AgentBase runtime update
-- production verification
-
-## Generated Files
-
-Generated locally or in CI:
-
-- `sharepoint_downloads/`
-- `sharepoint_downloads/sharepoint_manifest.json`
-- `knowledge_manifest.json`
-- `last_deployed_manifest.json`
-- `document_catalog.json`
-- `vector_db/index.faiss`
-- `vector_db/index.pkl`
-
-Do not commit:
-
-- `.env`
-- raw files under `sharepoint_downloads/`
-- token caches
-- API keys, passwords, or credentials
-
-## Local Development Fallback
-
-Local development can still use a local folder:
-
-```env
-PAPERS_DIR=papers
-```
-
-Production CI should use:
-
-```env
-PAPERS_DIR=sharepoint_downloads
-SHAREPOINT_DOWNLOAD_DIR=sharepoint_downloads
-MS_AUTH_FLOW=client_credentials
-```
-
-If SharePoint credentials are missing locally, developers can continue using the existing local document folder for testing. Production remains SharePoint-driven.
-
-## Runtime Artifact Policy
-
-The Docker image includes:
-
-- app source code
-- static UI files
-- `document_catalog.json`
-- `vector_db/index.faiss`
-- `vector_db/index.pkl`
-
-The Docker image excludes:
-
-- `.env`
-- `.venv/`
-- `sharepoint_downloads/`
-- raw PDFs
-- token caches
-- temporary manifests
+The tradeoff is manual knowledge updates instead of automatic SharePoint-driven CI updates.
 
 ## Troubleshooting
 
-SharePoint sync fails:
+Local SharePoint sync fails:
 
-- Confirm `MS_AUTH_FLOW=client_credentials`.
-- Confirm `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET`.
-- Confirm `MS_CLIENT_SECRET` is the Azure client secret value, not the Secret ID.
-- If `scripts/graph_auth_diagnostic.py` says token acquisition failed, check tenant/client/secret first.
-- If token acquisition succeeds but SharePoint access fails with 401/403, IT/admin must grant Microsoft Graph application permission and admin consent, such as `Sites.Read.All` or a site-scoped equivalent.
-- If the diagnostic returns 404, check `SHAREPOINT_SITE_ID`, `SHAREPOINT_DRIVE_ID`, `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`, and `SHAREPOINT_FOLDER_PATH`.
-- Confirm Graph application permissions and admin consent.
-- Confirm `SHAREPOINT_SITE_ID`, `SHAREPOINT_DRIVE_ID`, and `SHAREPOINT_FOLDER_PATH`.
+- Confirm `MS_AUTH_FLOW=device_code`.
+- Confirm the Microsoft account used in the device-code login has access to the SharePoint folder.
+- Confirm `SHAREPOINT_FOLDER_PATH` points to the intended folder inside the Documents drive.
+- Confirm `PAPERS_DIR=sharepoint_downloads` before rebuilding the vector DB.
 
-Manifest always changes:
+CI unexpectedly tries SharePoint sync:
 
-- Check whether SharePoint `eTag` or `cTag` changes on every read.
-- Compare SHA-256 fields in `knowledge_manifest.json`.
-- Confirm files are not being rewritten locally by another step.
-
-Ingestion fails:
-
-- Confirm `sharepoint_downloads/` contains PDFs.
-- Confirm `PAPERS_DIR=sharepoint_downloads`.
-- Confirm `vector_db/` can be written by the runner.
-
-AgentBase deploy fails:
-
-- Confirm `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET`.
-- Confirm `AGENTBASE_RUNTIME_ID` points to the existing runtime.
-- Confirm AgentBase managed Container Registry access.
-- Confirm `AGENTBASE_ENDPOINT_URL` is the public runtime URL.
-
-Production verification fails:
-
-- Check `GET /health`.
-- Check runtime logs in AgentBase.
-- Confirm the runtime listens on `PORT=8080`.
-- Confirm `document_catalog.json` and `vector_db/` are present in the Docker image.
-
-## What To Ask IT / Microsoft Admin
-
-Ask IT for:
-
-- Microsoft Entra app registration for CI.
-- Client secret or certificate credential.
-- Application permission approval for SharePoint read access.
-- The exact SharePoint site ID.
-- The exact SharePoint drive ID for the Documents library.
-- The folder path, for example `ISMS-Docs/ISMS Portal`.
-- Confirmation that GitHub Actions runner outbound traffic can reach Microsoft Graph.
+- Remove any workflow step calling `sharepoint_sync.py` or `scripts/graph_auth_diagnostic.py`.
+- Do not set `MS_AUTH_FLOW=device_code` in GitHub Actions. It is interactive and unsupported in CI.
