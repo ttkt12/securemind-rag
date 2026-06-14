@@ -30,6 +30,13 @@ def env_is_configured(name: str) -> bool:
     return bool(value and not value.startswith("your_"))
 
 
+def non_secret_env_value(name: str) -> str:
+    value = os.getenv(name, "").strip().strip('"').strip("'").strip()
+    if not value or value.startswith("your_"):
+        return "EMPTY"
+    return value
+
+
 def get_auth_flow() -> str:
     auth_flow = os.getenv("MS_AUTH_FLOW", "device_code").strip().lower()
     aliases = {
@@ -60,7 +67,9 @@ def validate_config(auth_flow: str) -> None:
             missing.append(name)
 
     folder_path = get_sharepoint_folder_path()
-    print(f"- SHAREPOINT_FOLDER_PATH: {'OK' if folder_path else 'EMPTY'}")
+    print(f"- SHAREPOINT_HOSTNAME: {non_secret_env_value('SHAREPOINT_HOSTNAME')}")
+    print(f"- SHAREPOINT_SITE_PATH: {non_secret_env_value('SHAREPOINT_SITE_PATH')}")
+    print(f"- SHAREPOINT_FOLDER_PATH: {folder_path or 'EMPTY'}")
     print(f"- SHAREPOINT_SITE_ID: {'OK' if env_is_configured('SHAREPOINT_SITE_ID') else 'EMPTY'}")
     print(f"- SHAREPOINT_DRIVE_ID: {'OK' if env_is_configured('SHAREPOINT_DRIVE_ID') else 'EMPTY'}")
 

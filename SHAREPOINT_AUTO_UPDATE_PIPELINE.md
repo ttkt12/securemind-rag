@@ -46,6 +46,22 @@ Use an app registration or service principal with application permissions suitab
 
 For least privilege, ask IT for site-scoped Graph access to the ISMS Portal document library if possible.
 
+## Authentication Modes
+
+SecureMind RAG separates local SharePoint sync from CI SharePoint sync:
+
+- Local mode: `MS_AUTH_FLOW=device_code`
+  - Use this when running `python sharepoint_sync.py` on your own machine.
+  - It uses an interactive Microsoft user login.
+  - Local success proves your user account can access SharePoint, but it does not prove the GitHub Actions app registration has app-only permission.
+- CI mode: `MS_AUTH_FLOW=client_credentials`
+  - GitHub Actions uses this mode.
+  - It must not require interactive login.
+  - It requires `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET` from GitHub Secrets.
+  - `MS_CLIENT_SECRET` must be the client secret value, not the Secret ID shown in Microsoft Entra.
+
+The workflow runs `scripts/graph_auth_diagnostic.py` before the full sync. This diagnostic first tests token acquisition, then separately tests SharePoint site/drive/folder access.
+
 ## Required GitHub Secrets
 
 Microsoft / SharePoint:
@@ -190,6 +206,10 @@ SharePoint sync fails:
 
 - Confirm `MS_AUTH_FLOW=client_credentials`.
 - Confirm `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET`.
+- Confirm `MS_CLIENT_SECRET` is the Azure client secret value, not the Secret ID.
+- If `scripts/graph_auth_diagnostic.py` says token acquisition failed, check tenant/client/secret first.
+- If token acquisition succeeds but SharePoint access fails with 401/403, IT/admin must grant Microsoft Graph application permission and admin consent, such as `Sites.Read.All` or a site-scoped equivalent.
+- If the diagnostic returns 404, check `SHAREPOINT_SITE_ID`, `SHAREPOINT_DRIVE_ID`, `SHAREPOINT_HOSTNAME`, `SHAREPOINT_SITE_PATH`, and `SHAREPOINT_FOLDER_PATH`.
 - Confirm Graph application permissions and admin consent.
 - Confirm `SHAREPOINT_SITE_ID`, `SHAREPOINT_DRIVE_ID`, and `SHAREPOINT_FOLDER_PATH`.
 
