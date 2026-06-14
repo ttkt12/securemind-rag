@@ -178,6 +178,12 @@ def graph_get(url: str, access_token: str, stream: bool = False) -> requests.Res
         timeout=60,
         stream=stream,
     )
+    if response.status_code in {401, 403}:
+        raise RuntimeError(
+            "Microsoft Graph request was not authorized. For CI app-only sync, ask IT to grant "
+            "admin consent for application permissions such as Sites.Read.All or a site-scoped "
+            "equivalent, and confirm the app can access the configured SharePoint site/drive."
+        )
     response.raise_for_status()
     return response
 
