@@ -664,7 +664,8 @@ button:hover:not(:disabled),
 
 button:focus-visible,
 textarea:focus-visible,
-input:focus-visible {
+input:focus-visible,
+.source-card:focus-visible {
   outline: 3px solid rgba(220, 101, 79, 0.32);
   outline-offset: 3px;
 }
