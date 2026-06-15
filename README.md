@@ -186,6 +186,19 @@ codes that actually exist in `document_catalog.json`:
 The shared resolver also feeds query-side retrieval in `rag_core.py`, so shorthand
 and reordered codes now scope retrieval to the right document.
 
+`document_code_utils.py` is the canonical owner for resolving codes typed in a
+**question**. Catalog-build code derivation (`document_intelligence.py`,
+`catalog_service.py`) and the retrieval-time filename→code helper
+(`extract_document_code_from_source` in `rag_core.py`) are deliberately left as-is
+because they affect catalog contents and retrieval ranking.
+
+> **Future work (deferred):** a few small text helpers are still duplicated between
+> `rag_core.py` and `document_intelligence.py` (`fold_accents`, `version_key`,
+> `extract_person_after_label`). They were not extracted during cleanup because they
+> sit inside ranking/answer-extraction paths and changing them risks altering
+> retrieval behavior. Consolidate them only alongside a ranking refactor with the
+> evaluation suite in place.
+
 ## Catalog-Backed Metadata Answers
 
 When a question contains both a resolvable document code and a metadata aspect,
