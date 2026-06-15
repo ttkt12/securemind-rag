@@ -21,6 +21,7 @@ from config import (
     get_api_key,
     make_embeddings,
 )
+from context_budget import build_context_budget
 from document_intelligence import (
     classify_chunk_section_types,
     classify_section_type,
@@ -498,24 +499,19 @@ def load_vector_store():
     )
 
 
+def format_context_with_metadata(documents) -> tuple[str, dict]:
+    result = build_context_budget(
+        documents,
+        max_chars=MAX_CONTEXT_CHARS,
+        source_name_fn=document_source_name,
+        document_code_fn=extract_document_code_from_source,
+    )
+    return result.context, result.metadata()
+
+
 def format_context(documents) -> str:
-    context_parts = []
-    remaining_chars = MAX_CONTEXT_CHARS
-
-    for index, document in enumerate(documents, start=1):
-        if remaining_chars <= 0:
-            break
-
-        source = document_source_name(document)
-        page = document.metadata.get("page")
-        page_label = f", page {page + 1}" if isinstance(page, int) else ""
-        document_code = document.metadata.get("document_code") or extract_document_code_from_source(source)
-        code_label = f"\nDocument code: {document_code}" if document_code else ""
-        content = document.page_content[:remaining_chars]
-        remaining_chars -= len(content)
-        context_parts.append(f"[{index}] Source: {source}{page_label}{code_label}\n{content}")
-
-    return "\n\n".join(context_parts)
+    context, _metadata = format_context_with_metadata(documents)
+    return context
 
 
 def normalize_for_match(text: str) -> str:
@@ -2805,7 +2801,9 @@ def answer_question(
     if not relevant_documents:
         return NO_RELEVANT_CONTEXT_ANSWER, [], None
 
-    context = format_context(relevant_documents)
+    context, context_budget = format_context_with_metadata(relevant_documents)
+    if debug_info_out is not None:
+        debug_info_out["context_budget"] = context_budget
     if not has_sufficient_evidence(context, analysis):
         return NO_RELEVANT_CONTEXT_ANSWER, relevant_documents, None
 

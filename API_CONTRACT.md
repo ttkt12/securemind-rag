@@ -124,6 +124,40 @@ Catalog response:
 }
 ```
 
+Debug response extension:
+
+When `debug` is `true`, the response may include safe retrieval and context
+budget metadata. It must not include API keys, secrets, raw environment values,
+raw prompts, or full confidential document chunks.
+
+```json
+{
+  "debug": {
+    "model_name": "configured-model-name",
+    "retrieval_k": 6,
+    "max_context_chars": 8000,
+    "context_budget": {
+      "max_chars": 8000,
+      "used_chars": 5360,
+      "estimated_tokens": 1420,
+      "included_chunks": 4,
+      "skipped_duplicates": 0,
+      "skipped_empty": 0,
+      "sources": [
+        {
+          "label": "ZION-QT-08.pdf page 2",
+          "filename": "ZION-QT-08.pdf",
+          "page": 2,
+          "document_code": "ZION-QT-08",
+          "char_count": 1320,
+          "estimated_tokens": 350
+        }
+      ]
+    }
+  }
+}
+```
+
 Error responses:
 
 ```json

@@ -2,6 +2,34 @@
 
 Enterprise-ready RAG knowledge assistant for security, compliance, ISMS, policy, procedure, and governance documents.
 
+![Python](https://img.shields.io/badge/Python-3.10+-1f2937?logo=python)
+![RAG](https://img.shields.io/badge/RAG-FAISS%20%2B%20Hybrid%20Retrieval-0f766e)
+![Teams](https://img.shields.io/badge/Microsoft%20Teams-Bot%20Framework-6264a7)
+![AgentBase](https://img.shields.io/badge/GreenNode-AgentBase-16a34a)
+![Security](https://img.shields.io/badge/Security-Secrets%20Safe-b91c1c)
+
+## At A Glance
+
+SecureMind RAG turns approved ISMS and GRC documents into a source-grounded assistant that works locally, in a browser, in Microsoft Teams, and on GreenNode AgentBase.
+
+| Area | Status |
+| --- | --- |
+| Knowledge source | SharePoint ISMS Portal folder or local PDFs |
+| Retrieval | FAISS, document catalog routing, keyword + semantic hybrid search |
+| Answering | Vietnamese/English, source-grounded, no model-generated source sections |
+| Interfaces | CLI, web chat, Microsoft Teams Bot Framework |
+| Runtime | Docker + AgentBase custom runtime |
+| Safety | No secrets in repo, scoped SharePoint sync, predeploy/security checks |
+
+Quick links:
+
+* [Local run](#how-to-run-locally-on-windows)
+* [SharePoint refresh](#one-command-local-knowledge-refresh)
+* [Teams setup](README_TEAMS.md)
+* [Deployment notes](DEPLOYMENT.md)
+* [API contract](API_CONTRACT.md)
+* [Chunking strategy](CHUNKING_STRATEGY.md)
+
 ## Overview
 
 SecureMind RAG is an internal AI knowledge assistant for querying controlled security and governance documents. It combines SharePoint document sync, PDF ingestion, document intelligence, FAISS retrieval, and Qwen-compatible answer generation into one local-first workflow that can be exposed through CLI, web chat, Microsoft Teams, and AgentBase.
@@ -14,6 +42,7 @@ The project is designed for an internal competition demo, but the structure foll
 * Local PDF ingestion from `papers/` or `sharepoint_downloads/`.
 * Text cleaning, chunking, multilingual embeddings, and FAISS vector storage.
 * Document intelligence catalog for document codes, process areas, section types, titles, and metadata hints.
+* Context budget builder for safe prompt assembly, duplicate trimming, and token estimation.
 * Hybrid retrieval using semantic search, document code detection, section keyword matching, query expansion, and catalog-aware ranking.
 * Vietnamese and English answer support with concise source-grounded responses.
 * Qwen no-thinking prompt controls and retry handling for empty final content.
@@ -69,6 +98,7 @@ Interfaces:
 | `build_document_catalog.py` | Builds `document_catalog.json` from the indexed document chunks. |
 | `document_intelligence.py` | Document code, process area, section type, synonym, and catalog-ranking logic. |
 | `memory.py` | Optional AgentBase Memory abstraction for recall and safe fact storage. |
+| `context_budget.py` | Prompt context budgeting, safe chunk deduplication, and token estimation inspired by Open Notebook's context-builder pattern. |
 | `rag_core.py` | Reusable retrieval and answer generation logic shared by every interface. |
 | `chatbot.py` | Thin local CLI entrypoint. |
 | `teams_bot.py` | aiohttp service for health checks, web chat, and Teams Bot Framework messages. |
@@ -139,6 +169,17 @@ The document intelligence layer turns the vector database into a structured docu
 * Likely user questions and search hints.
 
 `rag_core.py` uses this catalog before and during retrieval so questions like "which document should I check for access request?" or "tell me the scope of ZION-QT-08" can prefer the right document and section before calling the LLM.
+
+## Context Budgeting
+
+SecureMind RAG includes a lightweight context-budget layer inspired by the best parts of Open Notebook's context builder:
+
+* Deduplicates selected chunks before they enter the final prompt.
+* Enforces `MAX_CONTEXT_CHARS` without sending the entire corpus to the model.
+* Estimates prompt tokens with `tiktoken` when available and a safe offline fallback when not.
+* Adds safe debug metadata such as included chunk count, used characters, estimated tokens, and source labels.
+
+The debug metadata is available through `POST /chat` with `"debug": true`. It never returns raw document chunks, raw prompts, environment values, API keys, or secrets.
 
 ## Local CLI Chatbot
 
