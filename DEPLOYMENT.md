@@ -99,7 +99,10 @@ After rebuilding, provide the updated `vector_db/` and `document_catalog.json` t
 
 ## Predeploy Validation
 
-Run:
+**Run this before every Docker build / deployment.** The image bundles the local
+`vector_db/` and `document_catalog.json` (they are not tracked in Git), so a build
+from a clean checkout that skipped ingest would ship an empty knowledge base. This
+check fails fast in that case.
 
 ```bash
 python predeploy_check.py
@@ -110,10 +113,16 @@ The checker validates:
 * Required runtime environment variables are configured.
 * `vector_db/index.faiss` exists.
 * `vector_db/index.pkl` exists.
+* `document_catalog.json` exists and has at least `PREDEPLOY_MIN_CATALOG_DOCS`
+  documents (default 1).
 * `rag_core` imports.
 * The vector store loads.
 * The LLM client can be created.
 * `teams_bot.py` imports.
+
+> CI does not run this check: the CI runner intentionally has no `vector_db/` and no
+> runtime secrets, so it would always fail. Knowledge validation is a local/deploy-time
+> gate, not a CI gate.
 
 ## Docker Usage
 
