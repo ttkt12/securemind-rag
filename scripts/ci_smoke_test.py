@@ -155,8 +155,8 @@ def test_catalog_answers(vector_store, client) -> None:
 
 def test_rag_answers(vector_store, client) -> None:
     rag_questions = [
-        "can you tell me scope of ZION-QT-08",
         "password policy requirements là gì?",
+        "quy định về mật khẩu là gì?",
     ]
     for question in rag_questions:
         response = answer_chat(question, vector_store, client, debug=True)
@@ -168,6 +168,101 @@ def test_rag_answers(vector_store, client) -> None:
     print("RAG answer tests: OK")
 
 
+def test_document_code_normalization() -> None:
+    from document_code_utils import load_catalog_codes, normalize_document_code, resolve_code
+
+    codes = set(load_catalog_codes())
+    assert_true(bool(codes), "catalog has no document codes")
+
+    # Full codes resolve to themselves; both orderings are distinct documents.
+    for code in ("ZION-QT-04", "QT-ZION-04", "ZION-CS-01", "ZION-QT-08"):
+        if code in codes:
+            assert_true(normalize_document_code(code) == code, f"full code did not resolve: {code}")
+
+    # Reordered full code resolves to the single existing ordering.
+    if "ZION-TC-13" in codes and "TC-ZION-13" not in codes:
+        assert_true(
+            normalize_document_code("TC-ZION-13") == "ZION-TC-13",
+            "reordered TC code did not resolve",
+        )
+
+    # Unique shorthand resolves; ambiguous shorthand returns None + candidates.
+    if "ZION-CS-01" in codes and "CS-ZION-01" not in codes:
+        assert_true(normalize_document_code("CS-01") == "ZION-CS-01", "shorthand CS-01 did not resolve")
+    if {"QT-ZION-04", "ZION-QT-04"} <= codes:
+        resolved, candidates = resolve_code("QT-04")
+        assert_true(resolved is None, "ambiguous QT-04 should not resolve to one code")
+        assert_true(len(candidates) >= 2, "ambiguous QT-04 should list candidates")
+
+    # Unknown code returns None.
+    assert_true(normalize_document_code("ZZ-QQ-99") is None, "unknown code should be None")
+    print("Document code normalization tests: OK")
+
+
+def test_metadata_answers(vector_store, client, catalog_only: bool = False) -> None:
+    from document_code_utils import load_catalog_codes
+
+    codes = set(load_catalog_codes())
+
+    def meta(question: str) -> dict:
+        return answer_chat(question, vector_store, client, debug=True)
+
+    if "ZION-QT-04" in codes:
+        # Version count: only latest_version is known -> careful message, no LLM,
+        # must not leak author or invent a count.
+        response = meta("ZION-QT-04 có mấy version?")
+        m = response.get("metadata", {})
+        answer = response.get("answer", "")
+        assert_true(m.get("answer_type") == "metadata", "version_count not routed to metadata")
+        assert_true(m.get("query_aspect") == "version_count", "version_count aspect mismatch")
+        assert_true(m.get("retrieval_used") is False, "version_count used retrieval")
+        assert_true(m.get("llm_used") is False, "version_count used LLM")
+        assert_true("Tác giả" not in answer, "version_count leaked author")
+        assert_true("phiên bản" in answer.lower(), "version_count message missing")
+
+        # Latest version is answerable from the catalog with a source card.
+        response = meta("ZION-QT-04 version mới nhất là gì?")
+        m = response.get("metadata", {})
+        assert_true(m.get("answer_type") == "metadata", "latest_version not metadata")
+        assert_true(m.get("query_aspect") == "latest_version", "latest_version aspect mismatch")
+        assert_true(m.get("normalized_document_code") == "ZION-QT-04", "latest_version code mismatch")
+        assert_true(bool(response.get("sources")), "metadata answer missing source card")
+
+    if {"QT-ZION-04", "ZION-QT-04"} <= codes:
+        # Ambiguous shorthand -> deterministic clarification (still metadata).
+        response = meta("QT-04 có mấy version?")
+        m = response.get("metadata", {})
+        answer = response.get("answer", "")
+        assert_true(m.get("answer_type") == "metadata", "ambiguous code not metadata")
+        assert_true(m.get("retrieval_used") is False, "ambiguous code used retrieval")
+        assert_true("QT-ZION-04" in answer and "ZION-QT-04" in answer, "ambiguous answer missing candidates")
+
+    if "ZION-QT-08" in codes:
+        response = meta("scope của ZION-QT-08 là gì?")
+        m = response.get("metadata", {})
+        assert_true(m.get("answer_type") == "metadata", "scope not metadata")
+        assert_true(m.get("query_aspect") == "scope", "scope aspect mismatch")
+
+    if "ZION-CS-01" in codes:
+        response = meta("ngày hiệu lực của ZION-CS-01 là ngày nào")
+        m = response.get("metadata", {})
+        assert_true(m.get("answer_type") == "metadata", "effective_date not metadata")
+        assert_true(m.get("query_aspect") == "effective_date", "effective_date aspect mismatch")
+
+    if catalog_only:
+        print("Metadata answer tests (catalog-only): OK")
+        return
+
+    if "ZION-QT-04" in codes:
+        # author is empty in the catalog -> fall back to document-scoped RAG.
+        response = meta("author của ZION-QT-04 là ai?")
+        m = response.get("metadata", {})
+        assert_true(m.get("answer_type") == "rag", "author fallback should use RAG")
+        assert_true(m.get("query_aspect") == "author", "author fallback lost aspect")
+        assert_true(m.get("retrieval_used") is True, "author fallback should retrieve")
+    print("Metadata answer tests: OK")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="SecureMind RAG CI smoke tests.")
     parser.add_argument("--catalog-only", action="store_true", help="Skip LLM-backed RAG questions.")
@@ -177,15 +272,17 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
 
     test_catalog_core()
+    test_document_code_normalization()
     if args.catalog_only:
         test_catalog_answers(None, None)
+        test_metadata_answers(None, None, catalog_only=True)
         return
 
     vector_store = load_vector_store()
     client = make_client()
     test_catalog_answers(vector_store, client)
-    if not args.catalog_only:
-        test_rag_answers(vector_store, client)
+    test_metadata_answers(vector_store, client, catalog_only=False)
+    test_rag_answers(vector_store, client)
 
 
 if __name__ == "__main__":

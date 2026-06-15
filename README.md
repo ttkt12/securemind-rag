@@ -170,6 +170,50 @@ The document intelligence layer turns the vector database into a structured docu
 
 `rag_core.py` uses this catalog before and during retrieval so questions like "which document should I check for access request?" or "tell me the scope of ZION-QT-08" can prefer the right document and section before calling the LLM.
 
+## Document Code Normalization
+
+`document_code_utils.py` resolves the document code typed in a question against the
+codes that actually exist in `document_catalog.json`:
+
+* Full codes resolve to themselves. Both orderings can be distinct documents
+  (for example `ZION-QT-04` and `QT-ZION-04`), so the exact order is respected.
+* A reordered code resolves to the single existing ordering
+  (`TC-ZION-13` → `ZION-TC-13`).
+* Shorthand resolves when unique (`CS-01` → `ZION-CS-01`, `TC-13` → `ZION-TC-13`).
+* When shorthand is ambiguous (for example `QT-04` matches both `QT-ZION-04` and
+  `ZION-QT-04`), it does not guess — the bot asks for the full code.
+
+The shared resolver also feeds query-side retrieval in `rag_core.py`, so shorthand
+and reordered codes now scope retrieval to the right document.
+
+## Catalog-Backed Metadata Answers
+
+When a question contains both a resolvable document code and a metadata aspect,
+`catalog_metadata.py` answers directly from `document_catalog.json` — before generic
+RAG, with no retrieval and no LLM call. Aspects (Vietnamese + English): `author`,
+`version_count`, `latest_version`, `reviewer`, `approver`, `effective_date`, `scope`,
+`purpose`, `responsibility`. The response uses `answer_type="metadata"` and a source
+card pointing at the matched document.
+
+Examples:
+
+```text
+QT-04 có mấy version?          -> ambiguous code -> asks for the full code
+ZION-QT-04 có mấy version?     -> answers the version-count aspect (not author/latest only);
+                                  if no full version-history table exists in metadata it says so
+author của ZION-QT-04 là ai?   -> uses the catalog author; if empty, falls back to
+                                  document-scoped RAG (never invents an author)
+scope của ZION-QT-08 là gì?    -> answers scope from catalog metadata
+```
+
+This respects the requested aspect (it no longer answers "latest version + author"
+when you only asked for the version count). Normal questions without a document code
+and aspect (for example "quy định về mật khẩu là gì?") still use the regular
+RAG/hybrid retrieval path.
+
+> This is not full Ask Mode yet. Multi-query planning, per-query evidence answers,
+> and final synthesis remain a later phase on the roadmap.
+
 ## Context Budgeting
 
 SecureMind RAG includes a lightweight context-budget layer inspired by the best parts of Open Notebook's context builder:
@@ -210,7 +254,32 @@ GET  /
 POST /chat
 ```
 
-The web chat calls the same `rag_core.answer_question()` function as the CLI and Teams bot. It does not change retrieval behavior.
+The web chat calls the same `answer_chat()` answer path as the CLI and Teams bot. It does not change retrieval behavior.
+
+### Web API Access Token
+
+The web API can require a shared access token:
+
+```text
+REQUIRE_APP_ACCESS_TOKEN=false   # set true to enforce
+APP_ACCESS_TOKEN=                # the shared token value
+```
+
+When `REQUIRE_APP_ACCESS_TOKEN=true`, these endpoints require the header
+`X-App-Access-Token: <APP_ACCESS_TOKEN>`:
+
+```text
+POST /chat
+GET  /documents
+GET  /documents/count
+```
+
+`GET /`, `GET /health`, static assets, and Teams `POST /api/messages` stay public
+(Teams keeps its Bot Framework JWT validation). A missing token returns `401`, an
+invalid token returns `403`, both as clean JSON with no secret or env values. When
+the flag is `false` (default) local development works without a token. The web UI
+stores the token in `sessionStorage`, sends it on protected calls, and prompts for
+it on `401`/`403`.
 
 ## Microsoft Teams Endpoint
 
