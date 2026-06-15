@@ -145,6 +145,7 @@ def main() -> int:
             run_step("D. Run security audit", [python, "scripts/security_audit.py"])
             run_step("E. Run catalog smoke test", [python, "scripts/ci_smoke_test.py", "--catalog-only"])
             run_step("F. Run full smoke test", [python, "scripts/ci_smoke_test.py"])
+            run_step("G. Run golden regression test", [python, "scripts/golden_regression_test.py"])
         tests_passed = True
 
     print_summary(sync_status, tests_passed)

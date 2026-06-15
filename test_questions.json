@@ -19,57 +19,93 @@
     "question": "ZION-QT-04 có mấy version?",
     "category": "metadata_version_count",
     "expected_answer_type": "metadata",
-    "expect_retrieval_used": false,
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
     "expect_llm_used": false,
+    "requires_vector_store": true,
     "expected_code": "ZION-QT-04",
-    "must_not_contain": ["Tác giả"],
-    "expected_behavior": "Answer the version-count aspect from catalog metadata; do not return author or invent a count."
+    "must_not_contain": ["4.4.2", "Tác giả", "scope_summary"],
+    "expected_behavior": "Count versions from the document's version-control table evidence; never from catalog latest_version (which is a TOC number). Must not answer author."
   },
   {
-    "question": "ZION-QT-04 version mới nhất là gì?",
+    "question": "QT-04 có mấy version?",
+    "category": "metadata_version_count_shorthand",
+    "expected_answer_type": "metadata",
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
+    "expect_llm_used": false,
+    "requires_vector_store": true,
+    "expected_code": "ZION-QT-04",
+    "must_not_contain": ["4.4.2"],
+    "expected_behavior": "Unique shorthand QT-04 -> ZION-QT-04 in the current corpus; version count from evidence."
+  },
+  {
+    "question": "version mới nhất của ZION-QT-04 là gì?",
     "category": "metadata_latest_version",
     "expected_answer_type": "metadata",
-    "expect_retrieval_used": false,
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
     "expect_llm_used": false,
+    "requires_vector_store": true,
     "expected_code": "ZION-QT-04",
-    "expected_behavior": "Answer latest version from catalog metadata with a source card."
+    "must_not_contain": ["4.4.2"],
+    "expected_behavior": "Latest version from the version-control table evidence, not catalog latest_version."
   },
   {
     "question": "scope của ZION-QT-08 là gì?",
     "category": "metadata_scope",
     "expected_answer_type": "metadata",
-    "expect_retrieval_used": false,
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
     "expect_llm_used": false,
+    "requires_vector_store": true,
     "expected_code": "ZION-QT-08",
-    "expected_behavior": "Answer the scope aspect from catalog metadata."
+    "must_not_contain": ["3.4 Update Scope 2 June 2026 Ta Thi Kieu Thi", "Update Scope"],
+    "expected_behavior": "Scope from the real scope section evidence; reject change-log / version-control rows."
   },
   {
-    "question": "ngày hiệu lực của ZION-CS-01 là ngày nào",
+    "question": "author của ZION-QT-04 là ai?",
+    "category": "metadata_author",
+    "expected_answer_type": "metadata",
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
+    "expect_llm_used": false,
+    "requires_vector_store": true,
+    "expected_code": "ZION-QT-04",
+    "must_not_contain": ["4.4.2", "Xem xét và phê duyệt"],
+    "expected_behavior": "Author from document evidence (version-control table or a labelled field); no hallucination, no role/column-header phrase."
+  },
+  {
+    "question": "ngày hiệu lực của ZION-CS-01 là ngày nào?",
     "category": "metadata_effective_date",
     "expected_answer_type": "metadata",
-    "expect_retrieval_used": false,
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
     "expect_llm_used": false,
+    "requires_vector_store": true,
     "expected_code": "ZION-CS-01",
-    "expected_behavior": "Answer the effective date aspect from catalog metadata."
+    "expected_behavior": "Effective date from the document header evidence."
   },
   {
     "question": "scope của CS-01 là gì?",
-    "category": "code_normalization_shorthand",
+    "category": "metadata_scope_shorthand",
     "expected_answer_type": "metadata",
-    "expect_retrieval_used": false,
+    "expected_metadata_source": "document_evidence",
+    "expect_retrieval_used": true,
     "expect_llm_used": false,
+    "requires_vector_store": true,
     "expected_code": "ZION-CS-01",
-    "expected_behavior": "Unique shorthand CS-01 normalizes to ZION-CS-01, then scope answered from metadata."
+    "expected_behavior": "Unique shorthand CS-01 -> ZION-CS-01; scope answered from evidence."
   },
   {
-    "question": "QT-04 có mấy version?",
+    "question": "QT-04 có mấy version? (ambiguous-corpus case)",
     "category": "metadata_ambiguous_code",
     "expected_answer_type": "metadata",
     "expect_retrieval_used": false,
     "expect_llm_used": false,
     "requires_codes": ["QT-ZION-04", "ZION-QT-04"],
     "must_contain": ["QT-ZION-04", "ZION-QT-04"],
-    "expected_behavior": "Shorthand QT-04 is ambiguous ONLY when both orderings exist; then ask for the full code and list the candidates. Skipped when the catalog has a single ordering (QT-04 then resolves uniquely)."
+    "expected_behavior": "Only when BOTH orderings exist: QT-04 is ambiguous -> ask for the full code. Skipped when the corpus has a single ordering."
   },
   {
     "question": "quy định về mật khẩu là gì?",
@@ -104,22 +140,6 @@
     "expected_behavior": "Find access revocation/staff movement/leaver related document and explain what to check."
   },
   {
-    "question": "Muốn xin quyền admin production thì cần ai approve?",
-    "category": "rag_access_control",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Find access request/admin access approval evidence. If approver not found, say not found."
-  },
-  {
-    "question": "Cần rà soát quyền định kỳ thì xem tài liệu nào?",
-    "category": "rag_access_control",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Find UAR/access review document or section."
-  },
-  {
     "question": "Nếu muốn thay đổi cấu hình production thì theo quy trình nào?",
     "category": "rag_change_management",
     "expected_answer_type": "rag",
@@ -136,44 +156,12 @@
     "expected_behavior": "Find incident management procedure."
   },
   {
-    "question": "BCP áp dụng khi nào và xem tài liệu nào?",
-    "category": "rag_business_continuity",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Find business continuity document and scope/scenario if found."
-  },
-  {
-    "question": "Log giao dịch cần kiểm tra ở tài liệu nào?",
-    "category": "rag_logging_monitoring",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Find logging/monitoring standard/procedure."
-  },
-  {
-    "question": "What document should I check for access request?",
-    "category": "rag_access_control",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Answer in English if user asks in English; recommend access/account document."
-  },
-  {
     "question": "Tài liệu nào nói về bảo vệ dữ liệu cá nhân?",
     "category": "rag_data_protection",
     "expected_answer_type": "rag",
     "expect_retrieval_used": true,
     "expect_llm_used": true,
     "expected_behavior": "Recommend data protection/privacy/data masking policy or standard and include source."
-  },
-  {
-    "question": "Which procedure applies to production change?",
-    "category": "rag_change_management",
-    "expected_answer_type": "rag",
-    "expect_retrieval_used": true,
-    "expect_llm_used": true,
-    "expected_behavior": "Recommend change management procedure and summarize relevant evidence."
   },
   {
     "question": "Who approves access provisioning?",

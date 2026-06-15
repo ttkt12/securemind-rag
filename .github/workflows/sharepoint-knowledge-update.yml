@@ -20,6 +20,7 @@ name: SecureMind RAG CI / Deploy
       - "catalog_service.py"
       - "catalog_metadata.py"
       - "document_code_utils.py"
+      - "document_evidence_metadata.py"
       - "context_budget.py"
       - "text_utils.py"
       - "memory.py"
@@ -101,6 +102,7 @@ jobs:
             catalog_service.py \
             catalog_metadata.py \
             document_code_utils.py \
+            document_evidence_metadata.py \
             context_budget.py \
             text_utils.py \
             memory.py \
@@ -112,6 +114,7 @@ jobs:
             teams_bot.py \
             predeploy_check.py \
             scripts/ci_smoke_test.py \
+            scripts/golden_regression_test.py \
             scripts/local_refresh_knowledge.py \
             scripts/production_verify.py \
             scripts/security_audit.py
