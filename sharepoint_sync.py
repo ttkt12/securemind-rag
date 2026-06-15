@@ -26,15 +26,31 @@ def required_env(name: str) -> str:
 
 
 def env_is_configured(name: str) -> bool:
-    value = os.getenv(name, "").strip()
-    return bool(value and not value.startswith("your_"))
+    return normalize_optional_config(name) is not None
+
+
+def normalize_optional_config(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+
+    value = value.strip().strip('"').strip("'").strip()
+    if not value:
+        return None
+
+    folded_value = value.lower()
+    placeholder_values = {
+        "your_sharepoint_site_id_here",
+        "your_sharepoint_drive_id_here",
+    }
+    if folded_value in placeholder_values or folded_value.startswith("your_"):
+        return None
+
+    return value
 
 
 def non_secret_env_value(name: str) -> str:
-    value = os.getenv(name, "").strip().strip('"').strip("'").strip()
-    if not value or value.startswith("your_"):
-        return "EMPTY"
-    return value
+    return normalize_optional_config(name) or "EMPTY"
 
 
 def get_auth_flow() -> str:
@@ -216,7 +232,7 @@ def get_default_drive(access_token: str, site_id: str) -> dict:
 
 
 def get_site_from_env(access_token: str) -> dict:
-    site_id = os.getenv("SHAREPOINT_SITE_ID", "").strip()
+    site_id = normalize_optional_config("SHAREPOINT_SITE_ID")
     if site_id:
         site = graph_json(f"{GRAPH_BASE_URL}/sites/{quote(site_id, safe=':,')}", access_token)
         print(f"Site found: {site.get('displayName') or site.get('name') or site.get('id')}")
@@ -228,7 +244,7 @@ def get_site_from_env(access_token: str) -> dict:
 
 
 def get_drive_from_env(access_token: str, site_id: str) -> dict:
-    drive_id = os.getenv("SHAREPOINT_DRIVE_ID", "").strip()
+    drive_id = normalize_optional_config("SHAREPOINT_DRIVE_ID")
     if drive_id:
         drive = graph_json(f"{GRAPH_BASE_URL}/drives/{quote(drive_id, safe='')}", access_token)
         print(f"Drive found: {drive.get('name') or drive.get('id')}")
