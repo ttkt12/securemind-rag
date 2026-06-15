@@ -67,8 +67,9 @@
     "expected_answer_type": "metadata",
     "expect_retrieval_used": false,
     "expect_llm_used": false,
+    "requires_codes": ["QT-ZION-04", "ZION-QT-04"],
     "must_contain": ["QT-ZION-04", "ZION-QT-04"],
-    "expected_behavior": "Shorthand QT-04 is ambiguous; ask for the full code and list the candidate codes; do not guess."
+    "expected_behavior": "Shorthand QT-04 is ambiguous ONLY when both orderings exist; then ask for the full code and list the candidates. Skipped when the catalog has a single ordering (QT-04 then resolves uniquely)."
   },
   {
     "question": "quy định về mật khẩu là gì?",

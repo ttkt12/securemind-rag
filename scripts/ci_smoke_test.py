@@ -288,6 +288,9 @@ def test_labeled_dataset(vector_store, client) -> None:
         expected_code = item.get("expected_code")
         if expected_code and expected_code not in codes:
             continue  # catalog no longer has this code; skip rather than fail
+        required = item.get("requires_codes")
+        if required and not all(code in codes for code in required):
+            continue  # entry depends on codes absent from the current corpus
         label = item.get("category", item["question"])
         response = answer_chat(item["question"], vector_store, client, debug=True)
         meta = response.get("metadata", {})
