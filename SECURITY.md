@@ -20,9 +20,7 @@
 Use:
 
 ```powershell
-python sharepoint_sync.py
-python ingest.py
-python build_document_catalog.py
+python scripts/local_refresh_knowledge.py
 python chatbot.py
 ```
 

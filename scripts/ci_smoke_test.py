@@ -26,15 +26,16 @@ def u(value: str) -> str:
 def test_catalog_core() -> None:
     count_question = "có tất cả bao nhiêu document trong AI Agent này?"
     list_question = "kể tên tất cả tài liệu đó ra"
+    catalog = load_document_catalog()
+    catalog_count = len(catalog)
     history = [
         {"role": "user", "content": count_question},
         {
             "role": "assistant",
-            "content": "Hiện tại AI Agent này có 52 tài liệu duy nhất trong document catalog.",
+            "content": f"Hiện tại AI Agent này có {catalog_count} tài liệu duy nhất trong document catalog.",
         },
     ]
-    catalog = load_document_catalog()
-    assert_true(len(catalog) == 52, f"expected 52 catalog documents, got {len(catalog)}")
+    assert_true(catalog_count > 0, "catalog is empty")
     assert_true(detect_intent(count_question) == "catalog_count", "count intent not detected")
     assert_true(detect_intent(list_question, history) == "catalog_list", "list intent not detected")
 
@@ -144,7 +145,7 @@ def test_catalog_answers(vector_store, client) -> None:
     assert_true(list_response.get("sources") == [], "catalog list returned sources")
     assert_true(str(total) in list_response.get("answer", ""), "catalog list did not include total")
     catalog = load_document_catalog()
-    assert_true(total == len(catalog) == 52, f"catalog list total mismatch: {total}")
+    assert_true(total == len(catalog), f"catalog list total mismatch: {total}")
     answer_text = list_response.get("answer", "")
     for document in catalog:
         expected = document.get("code") or document.get("title") or document.get("filename")

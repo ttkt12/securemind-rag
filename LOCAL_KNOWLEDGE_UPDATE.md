@@ -14,13 +14,41 @@ SHAREPOINT_DOWNLOAD_DIR=sharepoint_downloads
 
 Do not commit `.env`.
 
-## 2. Run The Local Update
+## 2. One-Command Refresh
 
-```powershell
-python scripts/local_sync_knowledge.py
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+python scripts/local_refresh_knowledge.py --clean
 ```
 
-The script runs SharePoint sync, rebuilds `vector_db/`, rebuilds `document_catalog.json`, and runs a catalog smoke test.
+Windows CMD:
+
+```bat
+.venv\Scripts\activate.bat
+python scripts\local_refresh_knowledge.py --clean
+```
+
+The script runs:
+
+1. `python sharepoint_sync.py`
+2. `python ingest.py`
+3. `python build_document_catalog.py`
+4. `python scripts/security_audit.py`
+5. `python scripts/ci_smoke_test.py --catalog-only`
+6. `python scripts/ci_smoke_test.py`
+
+Useful shortcuts:
+
+```powershell
+python scripts/local_refresh_knowledge.py --skip-sync
+python scripts/local_refresh_knowledge.py --clean --yes
+```
+
+Use `--skip-tests` to only sync and rebuild knowledge artifacts. Use `--catalog-only` to run only the catalog build and catalog smoke test after ingest.
+
+The older `scripts/local_sync_knowledge.py` remains for compatibility, but `scripts/local_refresh_knowledge.py` is the preferred refresh command.
 
 ## 3. Verify Locally
 

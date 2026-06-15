@@ -101,6 +101,33 @@ SHAREPOINT_HOSTNAME -> SHAREPOINT_SITE_PATH -> SHAREPOINT_FOLDER_PATH -> SHAREPO
 
 When `SHAREPOINT_FOLDER_PATH` is set, the sync must start from that folder. If the folder cannot be resolved, the script stops instead of scanning the whole drive. This prevents noisy indexing and accidental ingestion of unrelated documents.
 
+## One-Command Local Knowledge Refresh
+
+Use the refresh script when SharePoint documents change and you want to sync, rebuild, and verify local knowledge in one command.
+
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+python scripts/local_refresh_knowledge.py --clean
+```
+
+Windows CMD:
+
+```bat
+.venv\Scripts\activate.bat
+python scripts\local_refresh_knowledge.py --clean
+```
+
+Shortcuts:
+
+```bash
+python scripts/local_refresh_knowledge.py --skip-sync
+python scripts/local_refresh_knowledge.py --clean --yes
+```
+
+Default behavior runs SharePoint sync, vector DB rebuild, document catalog rebuild, security audit, catalog smoke test, and full smoke test.
+
 ## Document Intelligence Layer
 
 The document intelligence layer turns the vector database into a structured document catalog. `build_document_catalog.py` scans indexed chunks and writes `document_catalog.json` with best-effort metadata such as:
