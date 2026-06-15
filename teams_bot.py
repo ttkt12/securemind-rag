@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -18,7 +19,17 @@ from dotenv import load_dotenv
 
 from answer_engine import answer_chat
 from catalog_service import catalog_count_payload, catalog_documents_payload
-from config import AI_BASE_URL, AI_MODEL, EMBEDDING_MODEL, MAX_CONTEXT_CHARS, RETRIEVAL_FETCH_K, RETRIEVAL_K, VECTOR_DB_DIR
+from config import (
+    AI_BASE_URL,
+    AI_MODEL,
+    APP_ACCESS_TOKEN,
+    EMBEDDING_MODEL,
+    MAX_CONTEXT_CHARS,
+    REQUIRE_APP_ACCESS_TOKEN,
+    RETRIEVAL_FETCH_K,
+    RETRIEVAL_K,
+    VECTOR_DB_DIR,
+)
 from rag_core import document_source_name, load_vector_store, make_client
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -209,6 +220,33 @@ WEB_CHAT_HTML = """<!doctype html>
 
 ERROR_MESSAGE = "Xin lỗi, bot gặp lỗi khi xử lý câu hỏi. Vui lòng thử lại hoặc liên hệ admin."
 
+# Web API routes that require X-App-Access-Token when REQUIRE_APP_ACCESS_TOKEN=true.
+# GET /, GET /health, static assets, and Teams /api/messages stay outside this set.
+PROTECTED_API_PATHS = frozenset({"/chat", "/documents", "/documents/count"})
+
+
+def access_token_matches(provided: str) -> bool:
+    if not APP_ACCESS_TOKEN:
+        return False
+    return hmac.compare_digest(provided.strip(), APP_ACCESS_TOKEN)
+
+
+@web.middleware
+async def access_token_middleware(request: web.Request, handler):
+    if REQUIRE_APP_ACCESS_TOKEN and request.path in PROTECTED_API_PATHS:
+        provided = request.headers.get("X-App-Access-Token", "").strip()
+        if not provided:
+            return web.json_response(
+                {"error": "Access token required. Set the X-App-Access-Token header."},
+                status=401,
+            )
+        if not access_token_matches(provided):
+            return web.json_response(
+                {"error": "Invalid access token."},
+                status=403,
+            )
+    return await handler(request)
+
 
 def env_is_configured(name: str) -> bool:
     value = os.getenv(name, "").strip()
@@ -255,16 +293,30 @@ def validate_startup_config() -> None:
     if not all(credential_checks.values()):
         print("- Microsoft Teams endpoint: DISABLED until bot credentials are configured")
 
+    if REQUIRE_APP_ACCESS_TOKEN:
+        if APP_ACCESS_TOKEN:
+            print("- Web API access token: ENFORCED on /chat, /documents, /documents/count")
+        else:
+            print(
+                "- Web API access token: ENFORCED but APP_ACCESS_TOKEN is empty -> all "
+                "protected requests will be rejected. Set APP_ACCESS_TOKEN."
+            )
+    else:
+        print("- Web API access token: not enforced (REQUIRE_APP_ACCESS_TOKEN=false)")
+
 
 def format_sources(sources: list, limit: int = 3) -> str:
     entries = []
     seen = set()
     for document in sources:
-        source = document_source_name(document)
-        page = document.metadata.get("page")
-        page_label = f" page {page + 1}" if isinstance(page, int) else ""
-        label = f"{source}{page_label}"
-        if label in seen:
+        if isinstance(document, dict):
+            label = str(document.get("label") or document.get("filename") or "").strip()
+        else:
+            source = document_source_name(document)
+            page = document.metadata.get("page")
+            page_label = f" page {page + 1}" if isinstance(page, int) else ""
+            label = f"{source}{page_label}"
+        if not label or label in seen:
             continue
         seen.add(label)
         entries.append(label)
@@ -370,6 +422,10 @@ def public_chat_metadata(metadata: dict) -> dict:
     if answer_type == "catalog":
         public_metadata["catalog_intent"] = metadata.get("catalog_intent")
         public_metadata["total_documents"] = metadata.get("total_documents", 0)
+    if answer_type == "metadata":
+        public_metadata["metadata_source"] = metadata.get("metadata_source")
+        public_metadata["normalized_document_code"] = metadata.get("normalized_document_code")
+        public_metadata["query_aspect"] = metadata.get("query_aspect")
     return public_metadata
 
 
@@ -420,9 +476,17 @@ def create_web_chat_handler(vector_store, client):
 
         sources = result.get("sources", [])
         public_metadata = public_chat_metadata(result.get("metadata", {}))
+        answer_type = public_metadata.get("answer_type")
+        if answer_type == "catalog":
+            out_sources = []
+        elif answer_type == "metadata":
+            # Metadata answers already carry normalized source records (plain dicts).
+            out_sources = sources if isinstance(sources, list) else []
+        else:
+            out_sources = web_source_records(sources)
         payload = {
             "answer": result.get("answer", ""),
-            "sources": [] if public_metadata.get("answer_type") == "catalog" else web_source_records(sources),
+            "sources": out_sources,
             "session_id": result.get("session_id"),
             "answer_type": public_metadata.get("answer_type", "rag"),
             "metadata": public_metadata,
@@ -484,7 +548,7 @@ def create_app() -> web.Application:
     adapter = BotFrameworkAdapter(settings)
     bot = SecureMindTeamsBot(vector_store, client)
 
-    app = web.Application()
+    app = web.Application(middlewares=[access_token_middleware])
     app.router.add_get("/", web_chat_home)
     app.router.add_static("/static/", path=str(STATIC_DIR), name="static")
     app.router.add_post("/chat", create_web_chat_handler(vector_store, client))

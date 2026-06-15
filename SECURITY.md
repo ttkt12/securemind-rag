@@ -26,6 +26,23 @@ python chatbot.py
 
 Local SharePoint sync uses `MS_AUTH_FLOW=device_code`. GitHub Actions must not run SharePoint sync or Microsoft Graph SharePoint calls.
 
+## Web API Access Token
+
+- The web API endpoints `POST /chat`, `GET /documents` and `GET /documents/count`
+  can be protected with a shared access token.
+- Set `REQUIRE_APP_ACCESS_TOKEN=true` and a non-empty `APP_ACCESS_TOKEN` to require
+  the header `X-App-Access-Token: <APP_ACCESS_TOKEN>` on those endpoints.
+- Missing token returns HTTP 401; an invalid token returns HTTP 403. Responses are
+  clean JSON (`{"error": ...}`) and never include the token, other secrets, or env
+  values. Token comparison uses a constant-time check.
+- `GET /`, `GET /health`, static assets, and the Teams `POST /api/messages` endpoint
+  are not gated by this token (Teams keeps its Bot Framework JWT validation).
+- The web UI sends the token from `sessionStorage` and prompts the user to set it when
+  it receives 401/403. The token is never logged or hard-coded in the frontend.
+- When `REQUIRE_APP_ACCESS_TOKEN=false` (default) local development works without a
+  token. Keep `APP_ACCESS_TOKEN` out of Git; set it via `.env` locally and Secrets in
+  deployment.
+
 ## Security Audit
 
 Run before committing:

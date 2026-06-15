@@ -55,6 +55,14 @@ DEBUG_RETRIEVAL = os.getenv("DEBUG_RETRIEVAL", "false").lower() in {
     "yes",
     "y",
 }
+REQUIRE_APP_ACCESS_TOKEN = os.getenv("REQUIRE_APP_ACCESS_TOKEN", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+}
+APP_ACCESS_TOKEN = os.getenv("APP_ACCESS_TOKEN", "").strip()
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4096"))
 MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "5000"))
 SHOW_USAGE = os.getenv("SHOW_USAGE", "true").lower() in {"1", "true", "yes", "y"}
