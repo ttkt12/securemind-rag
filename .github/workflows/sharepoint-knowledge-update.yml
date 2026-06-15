@@ -18,6 +18,12 @@ name: SecureMind RAG CI / Deploy
       - "answer_engine.py"
       - "intent_router.py"
       - "catalog_service.py"
+      - "catalog_metadata.py"
+      - "document_code_utils.py"
+      - "context_budget.py"
+      - "text_utils.py"
+      - "memory.py"
+      - "predeploy_check.py"
       - "ingest.py"
       - "build_document_catalog.py"
       - "sharepoint_sync.py"
@@ -93,14 +99,20 @@ jobs:
             build_document_catalog.py \
             document_intelligence.py \
             catalog_service.py \
+            catalog_metadata.py \
+            document_code_utils.py \
+            context_budget.py \
+            text_utils.py \
+            memory.py \
             intent_router.py \
             answer_engine.py \
             rag_core.py \
             chatbot.py \
             sharepoint_sync.py \
             teams_bot.py \
+            predeploy_check.py \
             scripts/ci_smoke_test.py \
-            scripts/local_sync_knowledge.py \
+            scripts/local_refresh_knowledge.py \
             scripts/production_verify.py \
             scripts/security_audit.py
 
