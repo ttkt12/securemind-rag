@@ -1,11 +1,19 @@
 # Frontend Integration Guide
 
-Use the backend `POST /chat` endpoint for the first custom web UI.
+> **Legacy / reference only.** The shipped web UI (`static/`) is served by
+> `teams_bot.py` from the same origin and calls relative paths (`/chat`,
+> `/documents/count`), not the absolute `API_BASE_URL` shown below. For the
+> current behavior see [README.md](README.md) ("Web Chat UI" and "Web API Access
+> Token") and the canonical request/response contract in
+> [API_CONTRACT.md](API_CONTRACT.md). This file is kept as an integration
+> reference for building a separate external frontend.
 
-Current deployed backend:
+Use the backend `POST /chat` endpoint for a custom web UI.
+
+Example deployed backend (replace with your runtime hostname):
 
 ```text
-https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn
+https://<your-agentbase-runtime-domain>
 ```
 
 ## Call `/chat`

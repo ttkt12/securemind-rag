@@ -186,6 +186,19 @@ codes that actually exist in `document_catalog.json`:
 The shared resolver also feeds query-side retrieval in `rag_core.py`, so shorthand
 and reordered codes now scope retrieval to the right document.
 
+`document_code_utils.py` is the canonical owner for resolving codes typed in a
+**question**. Catalog-build code derivation (`document_intelligence.py`,
+`catalog_service.py`) and the retrieval-time filename→code helper
+(`extract_document_code_from_source` in `rag_core.py`) are deliberately left as-is
+because they affect catalog contents and retrieval ranking.
+
+> **Future work (deferred):** a few small text helpers are still duplicated between
+> `rag_core.py` and `document_intelligence.py` (`fold_accents`, `version_key`,
+> `extract_person_after_label`). They were not extracted during cleanup because they
+> sit inside ranking/answer-extraction paths and changing them risks altering
+> retrieval behavior. Consolidate them only alongside a ranking refactor with the
+> evaluation suite in place.
+
 ## Catalog-Backed Metadata Answers
 
 When a question contains both a resolvable document code and a metadata aspect,
@@ -291,15 +304,11 @@ POST /api/messages
 
 Microsoft Teams sends POST activities to this route. A browser GET request to `/api/messages` may return `405 Method Not Allowed`, which is expected.
 
-The custom Teams app package is built from:
-
-```text
-teams_app/manifest.json
-teams_app/color.png
-teams_app/outline.png
-```
-
-For setup details, see `README_TEAMS.md`. A placeholder Teams app template is also available in `teams/`.
+The custom Teams app package is built by `scripts/package_teams_app.py`. Two
+package folders currently exist — `teams/` (the script's default source) and
+`teams_app/` (a separately prepared package). They are kept until the canonical
+one is confirmed; see `README_TEAMS.md` for the reconciliation note and how to
+build from either.
 
 ## AgentBase Deployment
 
@@ -452,6 +461,31 @@ Open:
 ```text
 http://localhost:3978/
 ```
+
+## Run Locally On macOS / Linux
+
+```bash
+git clone https://github.com/ttkt12/securemind-rag.git
+cd securemind-rag
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then create `.env` from `.env.example` and run the same `ingest.py` /
+`build_document_catalog.py` / `chatbot.py` / `teams_bot.py` commands as above
+(use `python3`).
+
+Platform notes:
+
+* **Do not use `constraints.txt` on macOS.** It pins `torch==2.12.0+cpu`, a
+  Linux/Windows-only CPU wheel that does not exist for macOS. CI and Docker use
+  that pin (and the PyTorch CPU index) on purpose; on macOS just run
+  `pip install -r requirements.txt`, which installs the standard `torch` wheel.
+* **`urllib3` / LibreSSL warning:** the stock macOS system Python can print
+  `NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+ ...`. It is only a
+  warning and is safe to ignore unless requests actually fail. To silence it, use a
+  python.org or Homebrew Python (built against OpenSSL) for the virtualenv.
 
 ## Rebuild After SharePoint Documents Change
 

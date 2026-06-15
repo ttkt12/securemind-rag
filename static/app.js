@@ -158,6 +158,7 @@ function createFormattedAnswer(text) {
   const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
   let paragraphLines = [];
   let currentList = null;
+  let currentListType = null;
 
   function flushParagraph() {
     if (paragraphLines.length) {
@@ -168,6 +169,7 @@ function createFormattedAnswer(text) {
 
   function closeList() {
     currentList = null;
+    currentListType = null;
   }
 
   lines.forEach((rawLine) => {
@@ -178,15 +180,19 @@ function createFormattedAnswer(text) {
       return;
     }
 
-    const bullet = rawLine.match(/^\s*(?:[-*\u2022]|\d+[.)])\s+(.+)$/);
-    if (bullet) {
+    const orderedItem = rawLine.match(/^\s*\d+[.)]\s+(.+)$/);
+    const unorderedItem = rawLine.match(/^\s*[-*\u2022]\s+(.+)$/);
+    if (orderedItem || unorderedItem) {
       flushParagraph();
-      if (!currentList) {
-        currentList = document.createElement("ul");
+      const listType = orderedItem ? "ol" : "ul";
+      const content = (orderedItem ? orderedItem[1] : unorderedItem[1]).trim();
+      if (!currentList || currentListType !== listType) {
+        currentList = document.createElement(listType);
+        currentListType = listType;
         block.appendChild(currentList);
       }
       const item = document.createElement("li");
-      appendInlineMarkdown(item, bullet[1].trim());
+      appendInlineMarkdown(item, content);
       currentList.appendChild(item);
       return;
     }
@@ -270,6 +276,8 @@ function appendSources(bubble, sources) {
     visibleSources.forEach((source) => {
       const card = document.createElement("div");
       card.className = "source-card";
+      card.tabIndex = 0;
+      card.setAttribute("role", "group");
 
       const sourceTitle = document.createElement("div");
       sourceTitle.className = "source-title";
@@ -287,6 +295,8 @@ function appendSources(bubble, sources) {
       sourceMeta.className = "source-meta";
       sourceMeta.textContent = details.length ? details.join(" / ") : "retrieved document";
 
+      const metaText = details.length ? `, ${details.join(", ")}` : "";
+      card.setAttribute("aria-label", `Source: ${source.filename || source.label}${metaText}`);
       card.append(sourceTitle, sourceMeta);
       list.appendChild(card);
     });
@@ -518,6 +528,7 @@ async function ask(question) {
   });
 
   button.dataset.loading = "true";
+  input.disabled = true;
   updateButtonState();
   setStatus("Searching");
 
@@ -575,6 +586,7 @@ async function ask(question) {
     setStatus("Error");
   } finally {
     button.dataset.loading = "false";
+    input.disabled = false;
     updateButtonState();
     input.focus();
   }

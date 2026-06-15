@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -263,6 +264,57 @@ def test_metadata_answers(vector_store, client, catalog_only: bool = False) -> N
     print("Metadata answer tests: OK")
 
 
+def test_labeled_dataset(vector_store, client) -> None:
+    """Assert the deterministic (no-LLM) entries in test_questions.json.
+
+    Only checks cheap, stable signals (answer_type, retrieval_used, llm_used,
+    normalized_document_code, must_contain/must_not_contain) — never exact LLM
+    text. RAG entries (expect_llm_used=true) are exercised by test_rag_answers and
+    eval_agent instead, so they are skipped here.
+    """
+    from document_code_utils import load_catalog_codes
+
+    path = PROJECT_ROOT / "test_questions.json"
+    if not path.exists():
+        print("Labeled dataset: test_questions.json missing; skipped")
+        return
+    entries = json.loads(path.read_text(encoding="utf-8"))
+    codes = set(load_catalog_codes())
+
+    checked = 0
+    for item in entries:
+        if item.get("expect_llm_used") is not False:
+            continue  # deterministic-only here
+        expected_code = item.get("expected_code")
+        if expected_code and expected_code not in codes:
+            continue  # catalog no longer has this code; skip rather than fail
+        required = item.get("requires_codes")
+        if required and not all(code in codes for code in required):
+            continue  # entry depends on codes absent from the current corpus
+        label = item.get("category", item["question"])
+        response = answer_chat(item["question"], vector_store, client, debug=True)
+        meta = response.get("metadata", {})
+        answer = response.get("answer", "")
+        assert_true(
+            meta.get("answer_type") == item["expected_answer_type"],
+            f"[{label}] answer_type {meta.get('answer_type')!r} != {item['expected_answer_type']!r}",
+        )
+        assert_true(meta.get("retrieval_used") == item["expect_retrieval_used"], f"[{label}] retrieval_used")
+        assert_true(meta.get("llm_used") == item["expect_llm_used"], f"[{label}] llm_used")
+        if expected_code:
+            assert_true(
+                meta.get("normalized_document_code") == expected_code,
+                f"[{label}] normalized_document_code {meta.get('normalized_document_code')!r} != {expected_code!r}",
+            )
+        for needle in item.get("must_contain", []):
+            assert_true(needle in answer, f"[{label}] answer missing {needle!r}")
+        for needle in item.get("must_not_contain", []):
+            assert_true(needle not in answer, f"[{label}] answer should not contain {needle!r}")
+        checked += 1
+
+    print(f"Labeled dataset deterministic checks: OK ({checked} cases)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="SecureMind RAG CI smoke tests.")
     parser.add_argument("--catalog-only", action="store_true", help="Skip LLM-backed RAG questions.")
@@ -276,12 +328,14 @@ def main() -> None:
     if args.catalog_only:
         test_catalog_answers(None, None)
         test_metadata_answers(None, None, catalog_only=True)
+        test_labeled_dataset(None, None)
         return
 
     vector_store = load_vector_store()
     client = make_client()
     test_catalog_answers(vector_store, client)
     test_metadata_answers(vector_store, client, catalog_only=False)
+    test_labeled_dataset(vector_store, client)
     test_rag_answers(vector_store, client)
 
 

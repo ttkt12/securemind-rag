@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,6 +67,36 @@ def main() -> int:
             "vector_db",
             "missing index.faiss or index.pkl; run python3 ingest.py first",
         )
+
+    catalog_path = Path("document_catalog.json")
+    catalog_total = None
+    if catalog_path.exists():
+        try:
+            payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                items = payload.get("documents") or payload.get("items") or payload.get("catalog") or []
+            else:
+                items = payload
+            catalog_total = len([item for item in items if isinstance(item, dict)])
+        except (OSError, json.JSONDecodeError):
+            catalog_total = None
+    min_docs = int(os.getenv("PREDEPLOY_MIN_CATALOG_DOCS", "1"))
+    if catalog_total is None:
+        add_result(
+            results,
+            "FAIL",
+            "document_catalog.json",
+            "missing or unreadable; run python build_document_catalog.py first",
+        )
+    elif catalog_total < min_docs:
+        add_result(
+            results,
+            "FAIL",
+            "document_catalog.json",
+            f"only {catalog_total} documents (expected >= {min_docs}); rebuild the catalog",
+        )
+    else:
+        add_result(results, "PASS", "document_catalog.json", f"{catalog_total} documents")
 
     try:
         import rag_core

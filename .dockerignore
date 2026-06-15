@@ -24,7 +24,7 @@ token_cache.bin
 knowledge_manifest.json
 last_deployed_manifest.json
 
-teams/.package_build/
+.package_build/
 securemind-rag-teams-template.zip
 securemind-rag-teams-app.zip
 

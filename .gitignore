@@ -23,7 +23,7 @@ token_cache.bin
 *.cer
 *.credentials.json
 .agentbase-state.json
-teams/.package_build/
+.package_build/
 securemind-rag-teams-template.zip
 securemind-rag-teams-app.zip
 papers/*

@@ -1,50 +1,186 @@
 [
   {
+    "question": "có tất cả bao nhiêu document trong AI Agent này?",
+    "category": "catalog_count",
+    "expected_answer_type": "catalog",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_behavior": "Deterministic catalog count from document_catalog.json; no retrieval, no LLM."
+  },
+  {
+    "question": "kể tên tất cả tài liệu đó ra",
+    "category": "catalog_list",
+    "expected_answer_type": "catalog",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_behavior": "Deterministic catalog list; lists every document; no retrieval, no LLM."
+  },
+  {
+    "question": "ZION-QT-04 có mấy version?",
+    "category": "metadata_version_count",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_code": "ZION-QT-04",
+    "must_not_contain": ["Tác giả"],
+    "expected_behavior": "Answer the version-count aspect from catalog metadata; do not return author or invent a count."
+  },
+  {
+    "question": "ZION-QT-04 version mới nhất là gì?",
+    "category": "metadata_latest_version",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_code": "ZION-QT-04",
+    "expected_behavior": "Answer latest version from catalog metadata with a source card."
+  },
+  {
+    "question": "scope của ZION-QT-08 là gì?",
+    "category": "metadata_scope",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_code": "ZION-QT-08",
+    "expected_behavior": "Answer the scope aspect from catalog metadata."
+  },
+  {
+    "question": "ngày hiệu lực của ZION-CS-01 là ngày nào",
+    "category": "metadata_effective_date",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_code": "ZION-CS-01",
+    "expected_behavior": "Answer the effective date aspect from catalog metadata."
+  },
+  {
+    "question": "scope của CS-01 là gì?",
+    "category": "code_normalization_shorthand",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "expected_code": "ZION-CS-01",
+    "expected_behavior": "Unique shorthand CS-01 normalizes to ZION-CS-01, then scope answered from metadata."
+  },
+  {
+    "question": "QT-04 có mấy version?",
+    "category": "metadata_ambiguous_code",
+    "expected_answer_type": "metadata",
+    "expect_retrieval_used": false,
+    "expect_llm_used": false,
+    "requires_codes": ["QT-ZION-04", "ZION-QT-04"],
+    "must_contain": ["QT-ZION-04", "ZION-QT-04"],
+    "expected_behavior": "Shorthand QT-04 is ambiguous ONLY when both orderings exist; then ask for the full code and list the candidates. Skipped when the catalog has a single ordering (QT-04 then resolves uniquely)."
+  },
+  {
+    "question": "quy định về mật khẩu là gì?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
+    "expected_behavior": "Normal RAG over password policy; retrieval + LLM with sources."
+  },
+  {
+    "question": "password policy requirements là gì?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
+    "expected_behavior": "Normal RAG over password policy requirements; retrieval + LLM with sources."
+  },
+  {
     "question": "Muốn xin cấp account thì xem tài liệu nào và làm sao request?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Recommend account/access management document, explain relevant procedure/approval if found, include source."
   },
   {
     "question": "User nghỉ việc thì quyền truy cập xử lý theo tài liệu nào?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find access revocation/staff movement/leaver related document and explain what to check."
   },
   {
     "question": "Muốn xin quyền admin production thì cần ai approve?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find access request/admin access approval evidence. If approver not found, say not found."
   },
   {
     "question": "Cần rà soát quyền định kỳ thì xem tài liệu nào?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find UAR/access review document or section."
   },
   {
     "question": "Nếu muốn thay đổi cấu hình production thì theo quy trình nào?",
+    "category": "rag_change_management",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find change management document/procedure."
   },
   {
     "question": "Có sự cố bảo mật thì report theo tài liệu nào?",
+    "category": "rag_incident_management",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find incident management procedure."
   },
   {
     "question": "BCP áp dụng khi nào và xem tài liệu nào?",
+    "category": "rag_business_continuity",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find business continuity document and scope/scenario if found."
   },
   {
     "question": "Log giao dịch cần kiểm tra ở tài liệu nào?",
+    "category": "rag_logging_monitoring",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find logging/monitoring standard/procedure."
   },
   {
     "question": "What document should I check for access request?",
-    "expected_behavior": "Answer in English or bilingual if user asks English, recommend access/account document."
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
+    "expected_behavior": "Answer in English if user asks in English; recommend access/account document."
   },
   {
     "question": "Tài liệu nào nói về bảo vệ dữ liệu cá nhân?",
+    "category": "rag_data_protection",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Recommend data protection/privacy/data masking policy or standard and include source."
   },
   {
     "question": "Which procedure applies to production change?",
+    "category": "rag_change_management",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Recommend change management procedure and summarize relevant evidence."
   },
   {
     "question": "Who approves access provisioning?",
+    "category": "rag_access_control",
+    "expected_answer_type": "rag",
+    "expect_retrieval_used": true,
+    "expect_llm_used": true,
     "expected_behavior": "Find access provisioning approval evidence. If approver is not found, say not found."
   }
 ]

@@ -111,7 +111,6 @@ def answer_chat(
         conversation_history=history,
         debug_info_out=retrieval_debug if debug else None,
         metadata_out=response_metadata,
-        allow_catalog=False,
     )
     response_metadata.setdefault("answer_type", "rag")
     if fallback_aspect:

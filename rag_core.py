@@ -32,10 +32,6 @@ from langchain_community.vectorstores import FAISS
 from openai import APIStatusError, OpenAI
 
 NO_RELEVANT_CONTEXT_ANSWER = "Không tìm thấy thông tin này trong tài liệu hiện có."
-CATALOG_UNAVAILABLE_ANSWER = (
-    "Không thể xác định số lượng tài liệu vì chưa tìm thấy document catalog. "
-    "Vui lòng chạy lại bước build catalog/ingest."
-)
 EMPTY_FINAL_ANSWER = (
     "Model đã xác thực và truy xuất được tài liệu liên quan, nhưng không trả về "
     "nội dung trả lời cuối cùng. Hãy thử tăng MAX_TOKENS hoặc hỏi ngắn hơn."
@@ -63,14 +59,6 @@ class QueryAnalysis:
     needs_clarification: bool = False
     clarification_question: str = ""
     expanded_query: str = ""
-
-
-@dataclass
-class CatalogAnswer:
-    answer: str
-    total_documents: int
-    documents: list[dict] = field(default_factory=list)
-    question_type: str = "catalog"
 
 
 OPERATIONAL_INTENT_KEYWORDS = {
@@ -1227,149 +1215,6 @@ def sanitize_catalog_document(entry: dict) -> dict:
         "page_count": page_count,
         "chunk_count": chunk_count if isinstance(chunk_count, int) else None,
     }
-
-
-def unique_catalog_documents(catalog: list[dict]) -> list[dict]:
-    documents = []
-    seen = set()
-    for entry in catalog or []:
-        key = catalog_document_key(entry)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        documents.append(sanitize_catalog_document(entry))
-    return documents
-
-
-def catalog_documents_from_vector_store(vector_store) -> list[dict]:
-    if vector_store is None:
-        return []
-    grouped: dict[str, dict] = {}
-    for document in vector_store.docstore._dict.values():
-        filename = document_source_name(document)
-        if filename not in grouped:
-            grouped[filename] = {
-                "document_code": extract_document_code_from_source(filename),
-                "document_title": Path(filename).stem,
-                "file_name": filename,
-                "filename": filename,
-                "source_pages": set(),
-                "chunk_count": 0,
-            }
-        grouped[filename]["chunk_count"] += 1
-        page = document.metadata.get("page")
-        if isinstance(page, int):
-            grouped[filename]["source_pages"].add(page + 1)
-
-    fallback = []
-    for entry in grouped.values():
-        entry["source_pages"] = sorted(entry["source_pages"])
-        entry["page_count"] = len(entry["source_pages"])
-        fallback.append(entry)
-    return unique_catalog_documents(fallback)
-
-
-def document_catalog_payload(vector_store=None, include_documents: bool = True) -> dict:
-    documents = unique_catalog_documents(load_document_catalog())
-    if not documents:
-        documents = catalog_documents_from_vector_store(vector_store)
-    payload = {"total_documents": len(documents)}
-    if include_documents:
-        payload["documents"] = documents
-    return payload
-
-
-def detect_catalog_question(question: str) -> str | None:
-    folded_question = fold_accents(normalize_for_match(question))
-    document_terms = (
-        "document",
-        "documents",
-        "tai lieu",
-        "knowledge base",
-        "corpus",
-        "ai agent",
-        "agent nay",
-    )
-    count_terms = (
-        "bao nhieu",
-        "bao nhi",
-        "tat ca bao nhieu",
-        "so luong",
-        "tong so",
-        "how many",
-        "total number",
-        "document count",
-        "count documents",
-    )
-    list_terms = (
-        "liet ke",
-        "li?t k",
-        "danh sach",
-        "nhung document nao",
-        "nhung documents nao",
-        "nhung tai lieu nao",
-        "co nhung document nao",
-        "co nhung tai lieu nao",
-        "list documents",
-        "documents in this agent",
-        "what documents",
-    )
-    has_document_term = any(term in folded_question for term in document_terms)
-    if not has_document_term:
-        return None
-    if any(term in folded_question for term in count_terms):
-        return "count"
-    if any(term in folded_question for term in list_terms):
-        return "list"
-    return None
-
-
-def catalog_document_line(document: dict, index: int) -> str:
-    code = document.get("code")
-    title = document.get("title") or document.get("filename") or "unknown"
-    filename = document.get("filename") or ""
-    page_count = document.get("page_count")
-    prefix = f"{index}. "
-    label = f"{code} - {title}" if code else str(title)
-    if filename and filename not in label:
-        label = f"{label} ({filename})"
-    if isinstance(page_count, int):
-        label = f"{label} - {page_count} pages"
-    return prefix + label
-
-
-def answer_catalog_question(question: str, vector_store=None) -> CatalogAnswer | None:
-    question_type = detect_catalog_question(question)
-    if not question_type:
-        return None
-
-    payload = document_catalog_payload(vector_store=vector_store, include_documents=True)
-    documents = payload.get("documents", [])
-    total_documents = int(payload.get("total_documents", 0))
-    if total_documents <= 0:
-        return CatalogAnswer(
-            answer=CATALOG_UNAVAILABLE_ANSWER,
-            total_documents=0,
-            documents=[],
-            question_type=question_type,
-        )
-
-    if question_type == "count":
-        return CatalogAnswer(
-            answer=f"Hiện tại AI Agent này có {total_documents} tài liệu duy nhất trong document catalog.",
-            total_documents=total_documents,
-            documents=documents,
-            question_type=question_type,
-        )
-
-    lines = [f"Document catalog hiện có {total_documents} tài liệu:"]
-    lines.extend(catalog_document_line(document, index) for index, document in enumerate(documents, start=1))
-    return CatalogAnswer(
-        answer="\n".join(lines),
-        total_documents=total_documents,
-        documents=documents,
-        question_type=question_type,
-    )
 
 
 def document_matches_code(document, document_codes: list[str]) -> bool:
@@ -2751,36 +2596,12 @@ def answer_question(
     conversation_history: list | None = None,
     debug_info_out: dict | None = None,
     metadata_out: dict | None = None,
-    allow_catalog: bool = True,
 ) -> tuple[str, list, object]:
     normalized_history = normalize_conversation_history(conversation_history)
     history_state = conversation_state_from_history(normalized_history)
     if conversation_state:
         history_state.update(conversation_state)
     conversation_state = history_state or conversation_state
-
-    catalog_answer = answer_catalog_question(question, vector_store=vector_store) if allow_catalog else None
-    if catalog_answer:
-        if metadata_out is not None:
-            metadata_out.clear()
-            metadata_out.update(
-                {
-                    "answer_type": "catalog",
-                    "question_type": catalog_answer.question_type,
-                    "total_documents": catalog_answer.total_documents,
-                    "documents": catalog_answer.documents,
-                }
-            )
-        if debug_info_out is not None:
-            debug_info_out.clear()
-            debug_info_out.update(
-                {
-                    "answer_type": "catalog",
-                    "total_documents": catalog_answer.total_documents,
-                    "retrieved_sources": [],
-                }
-            )
-        return catalog_answer.answer, [], None
 
     if metadata_out is not None:
         metadata_out.clear()

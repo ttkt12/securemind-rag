@@ -9,9 +9,9 @@ from document_intelligence import (
     find_catalog_candidates,
     load_document_catalog,
 )
+from answer_engine import answer_chat
 from rag_core import (
     analyze_question,
-    answer_question,
     document_source_name,
     format_retrieval_score,
     load_vector_store,
@@ -38,15 +38,21 @@ def format_sources(documents: list) -> list[str]:
     seen = set()
     sources = []
     for document in documents:
-        source = document_source_name(document)
-        page = document.metadata.get("page")
+        if isinstance(document, dict):
+            # Metadata/catalog answers return plain source records, not Documents.
+            source = document.get("filename") or document.get("label") or "source"
+            page = document.get("page")
+            score = ""
+        else:
+            source = document_source_name(document)
+            page = document.metadata.get("page")
+            score = format_retrieval_score(document)
         key = (source, page)
         if key in seen:
             continue
         seen.add(key)
 
         page_label = f" page {page + 1}" if isinstance(page, int) else ""
-        score = format_retrieval_score(document)
         score_label = f" | score: {score}" if score else ""
         sources.append(f"{source}{page_label}{score_label}")
 
@@ -86,7 +92,14 @@ def main() -> None:
             print("- none")
         print(f"Manual review note: {expected_behavior}")
 
-        answer, documents, _usage = answer_question(question, vector_store, client)
+        result = answer_chat(question, vector_store, client, debug=True)
+        answer = result.get("answer", "")
+        documents = result.get("sources", [])
+        meta = result.get("metadata", {})
+        print(
+            f"\nAnswer type: {meta.get('answer_type')} | "
+            f"retrieval_used={meta.get('retrieval_used')} | llm_used={meta.get('llm_used')}"
+        )
         print("\nAnswer:")
         print(answer)
 

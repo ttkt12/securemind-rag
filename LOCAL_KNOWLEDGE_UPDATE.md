@@ -48,7 +48,7 @@ python scripts/local_refresh_knowledge.py --clean --yes
 
 Use `--skip-tests` to only sync and rebuild knowledge artifacts. Use `--catalog-only` to run only the catalog build and catalog smoke test after ingest.
 
-The older `scripts/local_sync_knowledge.py` remains for compatibility, but `scripts/local_refresh_knowledge.py` is the preferred refresh command.
+`scripts/local_refresh_knowledge.py` is the single supported local refresh command. SharePoint sync is local-only (device_code); GitHub Actions never syncs SharePoint.
 
 ## 3. Verify Locally
 
