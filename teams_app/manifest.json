@@ -19,13 +19,13 @@
     "full": "SecureMind RAG"
   },
   "description": {
-    "short": "Teams chatbot for querying security and compliance documents.",
+    "short": "Teams chatbot for querying security, compliance, ISMS, policy, procedure, and governance documents.",
     "full": "SecureMind RAG is a Teams chatbot for querying security, compliance, ISMS, policy, procedure, and governance documents."
   },
   "accentColor": "#2563EB",
   "bots": [
     {
-      "botId": "92826e26-5c20-462e-8139-7e480672b5e5",
+      "botId": "16599541-6b2a-44d7-a6f5-439343562e8e",
       "scopes": [
         "personal"
       ],
