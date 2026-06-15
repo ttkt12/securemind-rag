@@ -291,15 +291,11 @@ POST /api/messages
 
 Microsoft Teams sends POST activities to this route. A browser GET request to `/api/messages` may return `405 Method Not Allowed`, which is expected.
 
-The custom Teams app package is built from:
-
-```text
-teams_app/manifest.json
-teams_app/color.png
-teams_app/outline.png
-```
-
-For setup details, see `README_TEAMS.md`. A placeholder Teams app template is also available in `teams/`.
+The custom Teams app package is built by `scripts/package_teams_app.py`. Two
+package folders currently exist — `teams/` (the script's default source) and
+`teams_app/` (a separately prepared package). They are kept until the canonical
+one is confirmed; see `README_TEAMS.md` for the reconciliation note and how to
+build from either.
 
 ## AgentBase Deployment
 

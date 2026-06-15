@@ -53,13 +53,23 @@ https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatfo
 
 ## Teams App Package
 
-`teams_app/` is the authoritative Teams app source (`manifest.json`, `color.png`,
-`outline.png`) used by `scripts/package_teams_app.py`. The `teams/` folder is a
-legacy placeholder template kept only for reference.
-
 `teams_bot.py` is always active because it also hosts the web UI/API
 (`GET /`, `POST /chat`, `GET /documents`), independent of whether the Teams
 integration is enabled.
+
+There are currently **two** Teams package folders. They are intentionally kept
+until the canonical one is confirmed — do not delete either yet:
+
+| Folder | Used by | Output zip |
+| --- | --- | --- |
+| `teams/` | `scripts/package_teams_app.py` (its `DEFAULT_SOURCE`); run with no `--source` | `securemind-rag-teams-template.zip` |
+| `teams_app/` | a separately prepared package (newer `manifest.json`) | `securemind-rag-teams-app.zip` |
+
+> **Action needed (owner decision):** pick one folder as canonical. Because
+> `package_teams_app.py` defaults to `teams/`, build from `teams_app/` with
+> `python scripts/package_teams_app.py --source teams_app --output securemind-rag-teams-app.zip`,
+> or repoint `DEFAULT_SOURCE` to `teams_app` and retire `teams/`. This was left
+> unresolved during cleanup to avoid breaking the packaging script.
 
 The Teams zip must contain these files at the root:
 
