@@ -59,10 +59,18 @@ Use local interactive auth:
 MS_AUTH_FLOW=device_code
 ```
 
-Then run:
+Then run the preferred one-command refresh:
 
-```powershell
-python scripts/local_sync_knowledge.py
+Windows:
+
+```bat
+python scripts\local_refresh_knowledge.py --clean --yes
+```
+
+macOS/Linux:
+
+```bash
+python scripts/local_refresh_knowledge.py --clean --yes
 ```
 
 The helper runs:
@@ -70,7 +78,9 @@ The helper runs:
 1. `python sharepoint_sync.py`
 2. `python ingest.py`
 3. `python build_document_catalog.py`
-4. `python scripts/ci_smoke_test.py --catalog-only`
+4. `python scripts/security_audit.py`
+5. `python scripts/ci_smoke_test.py --catalog-only`
+6. `python scripts/ci_smoke_test.py`
 
 It prints only a safe summary:
 

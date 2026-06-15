@@ -53,7 +53,13 @@ https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatfo
 
 ## Teams App Package
 
-Use the template in `teams/` or the prepared package folder in `teams_app/`.
+`teams_app/` is the authoritative Teams app source (`manifest.json`, `color.png`,
+`outline.png`) used by `scripts/package_teams_app.py`. The `teams/` folder is a
+legacy placeholder template kept only for reference.
+
+`teams_bot.py` is always active because it also hosts the web UI/API
+(`GET /`, `POST /chat`, `GET /documents`), independent of whether the Teams
+integration is enabled.
 
 The Teams zip must contain these files at the root:
 
