@@ -199,30 +199,33 @@ because they affect catalog contents and retrieval ranking.
 > retrieval behavior. Consolidate them only alongside a ranking refactor with the
 > evaluation suite in place.
 
-## Catalog-Backed Metadata Answers
+## Evidence-Based Metadata Answers
 
-When a question contains both a resolvable document code and a metadata aspect,
-`catalog_metadata.py` answers directly from `document_catalog.json` — before generic
-RAG, with no retrieval and no LLM call. Aspects (Vietnamese + English): `author`,
-`version_count`, `latest_version`, `reviewer`, `approver`, `effective_date`, `scope`,
-`purpose`, `responsibility`. The response uses `answer_type="metadata"` and a source
-card pointing at the matched document.
+Document-specific metadata questions are answered from **actual retrieved document
+evidence**, not from auto-extracted catalog fields. See [SMART_RAG.md](SMART_RAG.md)
+for the full design and source-of-truth rules.
+
+`catalog_metadata.py` detects the aspect (`version_count`, `latest_version`,
+`author`, `reviewer`, `approver`, `effective_date`, `scope`, `purpose`,
+`responsibility`) and resolves the document code; `document_evidence_metadata.py`
+then retrieves that document's chunks and extracts the answer with rule-based
+parsing (`answer_type="metadata"`, `metadata_source="document_evidence"`,
+`retrieval_used=true`, `llm_used=false`, `catalog_metadata_used=false`).
 
 Examples:
 
 ```text
-QT-04 có mấy version?          -> ambiguous code -> asks for the full code
-ZION-QT-04 có mấy version?     -> answers the version-count aspect (not author/latest only);
-                                  if no full version-history table exists in metadata it says so
-author của ZION-QT-04 là ai?   -> uses the catalog author; if empty, falls back to
-                                  document-scoped RAG (never invents an author)
-scope của ZION-QT-08 là gì?    -> answers scope from catalog metadata
+QT-04 có mấy version?          -> resolves QT-04 -> ZION-QT-04 (or asks for the full
+                                  code if ambiguous), counts versions from the
+                                  document's version-control table (not catalog)
+scope của ZION-QT-08 là gì?    -> returns the real scope section text, rejecting
+                                  change-log rows like "3.4 Update Scope 2 June 2026 ..."
+author của ZION-QT-04 là ai?   -> from document evidence, or "not found" — never invented
 ```
 
-This respects the requested aspect (it no longer answers "latest version + author"
-when you only asked for the version count). Normal questions without a document code
-and aspect (for example "quy định về mật khẩu là gì?") still use the regular
-RAG/hybrid retrieval path.
+Normal questions without a document code + aspect (for example
+"quy định về mật khẩu là gì?") still use the regular RAG/hybrid retrieval path,
+and `catalog_count` / `catalog_list` remain deterministic.
 
 > This is not full Ask Mode yet. Multi-query planning, per-query evidence answers,
 > and final synthesis remain a later phase on the roadmap.
