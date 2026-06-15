@@ -535,8 +535,18 @@ def contains_text(haystack: str, needle: str) -> bool:
 
 
 def extract_document_codes(question: str) -> list[str]:
-    codes = re.findall(r"\b[A-Z]{2,10}-[A-Z]{2,10}-\d{2,3}\b", question.upper())
-    return list(dict.fromkeys(codes))
+    # Legacy strict 3-part matcher (kept so full codes behave exactly as before).
+    legacy = list(dict.fromkeys(re.findall(r"\b[A-Z]{2,10}-[A-Z]{2,10}-\d{2,3}\b", question.upper())))
+    # Shared resolver adds canonical + shorthand/reordered codes (e.g. "QT-04",
+    # "TC-ZION-13") resolved against the catalog. Both forms are kept; downstream
+    # document_matches_code() matches if ANY form is found in the filename.
+    try:
+        from document_code_utils import extract_document_codes as resolve_codes
+
+        shared = resolve_codes(question)
+    except Exception:
+        shared = []
+    return list(dict.fromkeys([*legacy, *shared]))
 
 
 def extract_requested_versions(question: str) -> list[str]:
@@ -2926,15 +2936,21 @@ def print_sources(documents) -> None:
     seen_keys = set()
     seen_sources = []
     for document in documents:
-        source = document_source_name(document)
-        page = document.metadata.get("page")
+        if isinstance(document, dict):
+            # Catalog/metadata source record (no langchain Document).
+            source = document.get("filename") or document.get("label") or "source"
+            page = document.get("page")
+            score = ""
+        else:
+            source = document_source_name(document)
+            page = document.metadata.get("page")
+            score = format_retrieval_score(document)
         key = (source, page)
         if key in seen_keys:
             continue
 
         seen_keys.add(key)
         page_label = f" page {page + 1}" if isinstance(page, int) else ""
-        score = format_retrieval_score(document)
         score_label = f" | score: {score}" if score else ""
         label = f"{source}{page_label}{score_label}"
         if label not in seen_sources:
