@@ -462,6 +462,31 @@ Open:
 http://localhost:3978/
 ```
 
+## Run Locally On macOS / Linux
+
+```bash
+git clone https://github.com/ttkt12/securemind-rag.git
+cd securemind-rag
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then create `.env` from `.env.example` and run the same `ingest.py` /
+`build_document_catalog.py` / `chatbot.py` / `teams_bot.py` commands as above
+(use `python3`).
+
+Platform notes:
+
+* **Do not use `constraints.txt` on macOS.** It pins `torch==2.12.0+cpu`, a
+  Linux/Windows-only CPU wheel that does not exist for macOS. CI and Docker use
+  that pin (and the PyTorch CPU index) on purpose; on macOS just run
+  `pip install -r requirements.txt`, which installs the standard `torch` wheel.
+* **`urllib3` / LibreSSL warning:** the stock macOS system Python can print
+  `NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+ ...`. It is only a
+  warning and is safe to ignore unless requests actually fail. To silence it, use a
+  python.org or Homebrew Python (built against OpenSSL) for the virtualenv.
+
 ## Rebuild After SharePoint Documents Change
 
 When SharePoint content changes, refresh the local artifacts in this order:

@@ -1,1 +1,4 @@
+# CPU-only PyTorch wheel for Linux/Windows (used by CI and Docker via the
+# PyTorch CPU index). This +cpu build has no macOS wheel. On macOS do NOT use
+# this constraints file; run `pip install -r requirements.txt` for default torch.
 torch==2.12.0+cpu
