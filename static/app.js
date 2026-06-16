@@ -409,7 +409,7 @@ function renderEmptyState() {
   mark.textContent = "Z";
 
   const heading = document.createElement("h2");
-  heading.textContent = "GRC Copilot";
+  heading.textContent = "GRC Assistant";
 
   const copy = document.createElement("p");
   copy.textContent =

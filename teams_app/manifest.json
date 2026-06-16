@@ -15,12 +15,12 @@
     "outline": "outline.png"
   },
   "name": {
-    "short": "GRC Copilot",
-    "full": "ZaloPay GRC Copilot"
+    "short": "GRC Assistant",
+    "full": "ZaloPay GRC Assistant"
   },
   "description": {
     "short": "ZaloPay Compliance / GRC knowledge assistant for ISMS and security.",
-    "full": "GRC Copilot is ZaloPay's Compliance / GRC knowledge assistant for querying security, compliance, ISMS, policy, procedure, and governance documents."
+    "full": "GRC Assistant is ZaloPay's Compliance / GRC knowledge assistant for querying security, compliance, ISMS, policy, procedure, and governance documents."
   },
   "accentColor": "#0033C9",
   "bots": [
