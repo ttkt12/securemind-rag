@@ -275,6 +275,20 @@ def teams_tenant_id() -> str:
     return first_env("MICROSOFT_APP_TENANT_ID", "MS_TENANT_ID")
 
 
+def teams_app_type() -> str:
+    return first_env("MICROSOFT_APP_TYPE") or "MultiTenant"
+
+
+def channel_auth_tenant() -> str | None:
+    # Incoming-token validation must match the bot's app type. A multi-tenant bot
+    # gets tokens from the shared Bot Framework issuer, so channel_auth_tenant
+    # MUST be None — pinning it to a tenant makes validation reject every request
+    # (401) and the bot silently never replies. Only single-tenant bots scope it.
+    if teams_app_type().strip().lower() == "singletenant":
+        return teams_tenant_id() or None
+    return None
+
+
 def validate_startup_config() -> None:
     print("Teams bot config validation:")
     credential_checks = {
@@ -616,10 +630,12 @@ def create_app() -> web.Application:
     app_id = teams_app_id()
     app_password = teams_app_password()
     teams_enabled = bool(app_id and app_password)
+    auth_tenant = channel_auth_tenant()
+    print(f"Teams adapter: app_type={teams_app_type()}, channel_auth_tenant={'set' if auth_tenant else 'none'}")
     settings = BotFrameworkAdapterSettings(
         app_id,
         app_password,
-        channel_auth_tenant=teams_tenant_id() or None,
+        channel_auth_tenant=auth_tenant,
     )
     adapter = BotFrameworkAdapter(settings)
     bot = SecureMindTeamsBot(vector_store, client, adapter=adapter, app_id=app_id)
