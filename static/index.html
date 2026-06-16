@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>SecureMind RAG — ISMS Knowledge Assistant</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260616-ui3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260616-ui4">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -48,12 +48,12 @@
           <span class="access-state" id="access-state">Not set</span>
         </button>
         <div class="access-fields" id="access-fields" hidden>
-          <label for="access-token">X-App-Access-Token (this browser session only)</label>
+          <label for="access-token">X-App-Access-Token · this browser session only</label>
           <div class="token-row">
             <input id="access-token" type="password" autocomplete="off" placeholder="Paste token">
             <button id="save-token" type="button">Save</button>
           </div>
-          <button class="clear-token" id="clear-token" type="button">Clear token</button>
+          <button class="clear-token" id="clear-token" type="button" hidden>Clear token</button>
         </div>
       </section>
     </aside>
@@ -69,7 +69,6 @@
         </div>
         <div class="topbar-actions">
           <span class="status-pill" id="status-pill" data-state="ready">Ready</span>
-          <button class="retry-button" id="retry-last" type="button" hidden>Retry</button>
         </div>
       </header>
 
@@ -102,6 +101,6 @@
     </section>
   </div>
 
-  <script src="/static/app.js?v=20260616-ui3" defer></script>
+  <script src="/static/app.js?v=20260616-ui4" defer></script>
 </body>
 </html>

@@ -27,7 +27,6 @@ const els = {
   input: document.getElementById("question"),
   send: document.getElementById("send"),
   statusPill: document.getElementById("status-pill"),
-  retryLast: document.getElementById("retry-last"),
   errorBanner: document.getElementById("error-banner"),
   errorText: document.getElementById("error-text"),
   errorRetry: document.getElementById("error-retry"),
@@ -514,14 +513,18 @@ function setStatus(label, state) {
 }
 
 function showError(message) {
-  els.errorText.textContent = message;
+  const text = (message || "").trim();
+  if (!text) {
+    hideError();
+    return;
+  }
+  els.errorText.textContent = text;
   els.errorBanner.hidden = false;
-  els.retryLast.hidden = !lastQuestion;
+  els.errorRetry.hidden = !lastQuestion;
 }
 
 function hideError() {
   els.errorBanner.hidden = true;
-  els.retryLast.hidden = true;
 }
 
 function updateSendState() {
@@ -636,6 +639,7 @@ function updateAccessState() {
   els.accessState.textContent = token ? "Set" : "Not set";
   els.accessState.dataset.set = token ? "true" : "false";
   els.accessToken.value = token || "";
+  els.clearToken.hidden = !token;
 }
 
 /* ----------------------------------------------------------- sidebar */
@@ -664,6 +668,7 @@ els.form.addEventListener("submit", (event) => {
 els.input.addEventListener("input", () => {
   autoResize();
   updateSendState();
+  if (!els.errorBanner.hidden) hideError();
 });
 
 els.input.addEventListener("keydown", (event) => {
@@ -705,7 +710,6 @@ els.clearSessions.addEventListener("click", () => {
 const retry = () => {
   if (lastQuestion && !sending) ask(lastQuestion);
 };
-els.retryLast.addEventListener("click", retry);
 els.errorRetry.addEventListener("click", retry);
 
 els.accessToggle.addEventListener("click", () => {
