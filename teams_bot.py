@@ -258,17 +258,22 @@ def env_is_configured(name: str) -> bool:
 def first_env(*names: str) -> str:
     for name in names:
         value = os.getenv(name, "").strip()
-        if value:
+        # Skip unfilled .env.example placeholders (e.g. "your_microsoft_bot_app_id_here"),
+        # which are non-empty and would otherwise masquerade as a real value.
+        if value and not value.startswith("your_"):
             return value
     return ""
 
 
+# Bot Framework credentials only. MS_CLIENT_ID/MS_CLIENT_SECRET are the SharePoint
+# Graph app — deliberately NOT used here, or the bot would authenticate as the
+# wrong app and reject every incoming Teams token.
 def teams_app_id() -> str:
-    return first_env("MICROSOFT_APP_ID", "TEAMS_BOT_APP_ID", "MS_CLIENT_ID")
+    return first_env("MICROSOFT_APP_ID", "TEAMS_BOT_APP_ID")
 
 
 def teams_app_password() -> str:
-    return first_env("MICROSOFT_APP_PASSWORD", "TEAMS_BOT_APP_PASSWORD", "MS_CLIENT_SECRET")
+    return first_env("MICROSOFT_APP_PASSWORD", "TEAMS_BOT_APP_PASSWORD")
 
 
 def teams_tenant_id() -> str:
