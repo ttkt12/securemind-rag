@@ -353,9 +353,11 @@ def clean_teams_message_text(turn_context: TurnContext) -> str:
 
 
 class SecureMindTeamsBot(ActivityHandler):
-    def __init__(self, vector_store, client) -> None:
+    def __init__(self, vector_store, client, adapter=None, app_id: str = "") -> None:
         self.vector_store = vector_store
         self.client = client
+        self.adapter = adapter
+        self.app_id = app_id
 
     async def on_message_activity(self, turn_context: TurnContext) -> None:
         user_text = clean_teams_message_text(turn_context)
@@ -363,38 +365,57 @@ class SecureMindTeamsBot(ActivityHandler):
             await turn_context.send_activity("Vui lòng nhập câu hỏi về tài liệu ISMS, bảo mật hoặc tuân thủ.")
             return
 
+        # answer_chat regularly takes longer than the Bot Framework turn timeout
+        # (~15s) on a busy model endpoint, which made Teams give up and show no
+        # answer at all. Acknowledge immediately, then compute and deliver the
+        # answer proactively on a background task so the /api/messages turn
+        # returns right away.
+        await turn_context.send_activity(Activity(type=ActivityTypes.typing))
+        reference = TurnContext.get_conversation_reference(turn_context.activity)
+        asyncio.ensure_future(self._process_and_reply(reference, user_text))
+
+    async def _process_and_reply(self, reference, user_text: str) -> None:
         started = time.perf_counter()
         answer_task = asyncio.ensure_future(
             asyncio.to_thread(answer_chat, user_text, self.vector_store, self.client)
         )
 
-        # The LLM call can take a long time on a busy model endpoint. Keep a
-        # typing indicator alive so the user sees the bot is working instead of
-        # staring at silence (Teams typing indicators expire after a few seconds).
+        async def send_typing(turn_context: TurnContext) -> None:
+            await turn_context.send_activity(Activity(type=ActivityTypes.typing))
+
+        # Refresh the typing indicator (it expires after a few seconds) until the
+        # answer is ready, so a long wait still shows activity.
+        while True:
+            done, _ = await asyncio.wait({answer_task}, timeout=6.0)
+            if done:
+                break
+            await self._send_proactive(reference, send_typing)
+
         try:
-            while True:
-                await turn_context.send_activity(Activity(type=ActivityTypes.typing))
-                done, _ = await asyncio.wait({answer_task}, timeout=4.0)
-                if done:
-                    break
             result = answer_task.result()
+            usage = result.get("usage")
+            print(
+                f"[teams] answered in {time.perf_counter() - started:.1f}s "
+                f"(answer_type={result.get('answer_type')}, "
+                f"completion_tokens={getattr(usage, 'completion_tokens', None)})"
+            )
+            text = f"{result.get('answer', '')}{format_sources(result.get('sources', []), limit=3)}"
         except Exception:
-            answer_task.cancel()
-            await turn_context.send_activity(ERROR_MESSAGE)
+            text = ERROR_MESSAGE
+
+        async def send_answer(turn_context: TurnContext) -> None:
+            await turn_context.send_activity(MessageFactory.text(text))
+
+        await self._send_proactive(reference, send_answer)
+
+    async def _send_proactive(self, reference, callback) -> None:
+        """Deliver a message into the conversation outside the original turn."""
+        if self.adapter is None:
             return
-
-        elapsed = time.perf_counter() - started
-        usage = result.get("usage")
-        completion_tokens = getattr(usage, "completion_tokens", None)
-        print(
-            f"[teams] answered in {elapsed:.1f}s "
-            f"(answer_type={result.get('answer_type')}, completion_tokens={completion_tokens})"
-        )
-
-        answer = result.get("answer", "")
-        sources = result.get("sources", [])
-        response_text = f"{answer}{format_sources(sources, limit=3)}"
-        await turn_context.send_activity(MessageFactory.text(response_text))
+        try:
+            await self.adapter.continue_conversation(reference, callback, self.app_id)
+        except Exception as error:  # connector/auth hiccup — log, don't crash the task
+            print(f"[teams] proactive send failed: {error.__class__.__name__}")
 
 
 async def health(_request: web.Request) -> web.Response:
@@ -583,7 +604,7 @@ def create_app() -> web.Application:
         channel_auth_tenant=teams_tenant_id() or None,
     )
     adapter = BotFrameworkAdapter(settings)
-    bot = SecureMindTeamsBot(vector_store, client)
+    bot = SecureMindTeamsBot(vector_store, client, adapter=adapter, app_id=app_id)
 
     app = web.Application(middlewares=[access_token_middleware])
     app.router.add_get("/", web_chat_home)
