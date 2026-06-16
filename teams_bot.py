@@ -582,15 +582,18 @@ def create_messages_handler(adapter: BotFrameworkAdapter, bot: SecureMindTeamsBo
 
         body = await request.json()
         activity = Activity().deserialize(body)
+        auth_header = request.headers.get("Authorization", "")
+        print(f"[teams] /api/messages hit: type={activity.type} auth={'yes' if auth_header else 'no'}")
         if activity.type != ActivityTypes.message:
             return web.Response(status=201)
 
-        auth_header = request.headers.get("Authorization", "")
         try:
             response = await adapter.process_activity(activity, auth_header, bot.on_turn)
-        except PermissionError:
+        except PermissionError as error:
+            print(f"[teams] process_activity UNAUTHORIZED: {error}")
             return web.Response(status=401, text="Unauthorized")
-        except Exception:
+        except Exception as error:
+            print(f"[teams] process_activity ERROR: {error.__class__.__name__}: {error}")
             return web.Response(status=500, text=ERROR_MESSAGE)
 
         if response:
