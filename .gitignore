@@ -33,4 +33,5 @@ test_questions.txt
 .DS_Store
 .vscode/
 .idea/
+.claude/
 _research/

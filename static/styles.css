@@ -1,46 +1,86 @@
 /* SecureMind RAG — premium internal ISMS knowledge workspace */
 
 :root {
-  /* Warm neutral canvas */
-  --canvas: #f4f1ea;
-  --canvas-grain: #efeae0;
+  /* ZaloPay-tinted light canvas */
+  --canvas: #f4f7fc;
+  --canvas-grain: #eef3fb;
+  --canvas-glass: rgba(244, 247, 252, 0.9);
   --surface: #ffffff;
-  --surface-muted: #faf8f3;
-  --border: #e4ddd0;
-  --border-strong: #d6cdbc;
+  --surface-muted: #f1f5fd;
+  --border: #e3e9f4;
+  --border-strong: #cfd9ec;
 
   /* Ink */
-  --ink: #1d2723;
-  --ink-soft: #46544e;
-  --ink-faint: #7c887f;
+  --ink: #0a1633;
+  --ink-soft: #45526f;
+  --ink-faint: #8591ab;
 
-  /* Single accent: muted security green */
-  --accent: #1f7a63;
-  --accent-strong: #176552;
-  --accent-soft: #e6f1ec;
-  --accent-ring: rgba(31, 122, 99, 0.28);
+  /* ZaloPay brand: blue primary + green secondary */
+  --accent: #0033c9;
+  --accent-strong: #00259a;
+  --accent-soft: #e7ecfb;
+  --accent-ring: rgba(0, 51, 201, 0.26);
+  --accent-2: #00cf6a;
+  --accent-2-strong: #00a857;
+  --brand-gradient: linear-gradient(140deg, #00cf6a 0%, #0033c9 82%);
 
-  /* Dark refined sidebar */
-  --rail: #12211d;
-  --rail-raised: #1a2c27;
-  --rail-border: rgba(255, 255, 255, 0.08);
-  --rail-ink: #eef3f0;
-  --rail-ink-soft: #9db0a8;
-  --rail-ink-faint: #6f827b;
+  /* Warn (ZaloPay orange) */
+  --warn-ink: #9a5800;
+  --warn-soft: #fff3e0;
 
-  --danger: #b4452f;
-  --danger-soft: #fbeae5;
+  /* Deep ZaloPay-blue sidebar */
+  --rail: #061233;
+  --rail-raised: #0d1f4d;
+  --rail-border: rgba(255, 255, 255, 0.10);
+  --rail-ink: #eaf0fb;
+  --rail-ink-soft: #9fb0d4;
+  --rail-ink-faint: #6c7ea8;
+
+  --danger: #e03a2f;
+  --danger-soft: #fdecea;
+  --danger-ink: #8a1f15;
 
   --radius: 14px;
   --radius-sm: 10px;
   --radius-lg: 20px;
-  --shadow-sm: 0 1px 2px rgba(24, 38, 33, 0.06);
-  --shadow-md: 0 10px 30px rgba(24, 38, 33, 0.08);
+  --shadow-sm: 0 1px 2px rgba(10, 22, 51, 0.06);
+  --shadow-md: 0 10px 30px rgba(10, 22, 51, 0.10);
   --maxread: 720px;
 
   color-scheme: light;
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-feature-settings: "ss01", "cv05";
+}
+
+/* Dark mode — toggled via [data-theme="dark"] on <html> */
+[data-theme="dark"] {
+  --canvas: #070d1f;
+  --canvas-grain: #0a1228;
+  --canvas-glass: rgba(7, 13, 31, 0.9);
+  --surface: #111b38;
+  --surface-muted: #16234a;
+  --border: #25325a;
+  --border-strong: #324168;
+  --ink: #eaf0fb;
+  --ink-soft: #b4c0db;
+  --ink-faint: #8190b4;
+  --accent: #4d7cff;
+  --accent-strong: #719aff;
+  --accent-soft: rgba(77, 124, 255, 0.16);
+  --accent-ring: rgba(77, 124, 255, 0.34);
+  --accent-2: #2ad98a;
+  --accent-2-strong: #00cf6a;
+  --warn-ink: #ffb454;
+  --warn-soft: rgba(255, 138, 0, 0.16);
+  --rail: #050b1c;
+  --rail-raised: #101e44;
+  --rail-border: rgba(255, 255, 255, 0.09);
+  --danger: #ff6b5e;
+  --danger-soft: rgba(255, 107, 94, 0.15);
+  --danger-ink: #ffb0a8;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 34px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -84,7 +124,7 @@ body {
 .control-rail {
   position: relative;
   background:
-    radial-gradient(120% 80% at 0% 0%, rgba(31, 122, 99, 0.18), transparent 55%),
+    radial-gradient(120% 80% at 0% 0%, rgba(0, 207, 106, 0.18), transparent 55%),
     var(--rail);
   color: var(--rail-ink);
   border-right: 1px solid var(--rail-border);
@@ -109,9 +149,9 @@ body {
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.04em;
-  color: #06140f;
-  background: linear-gradient(150deg, #5ec5a6, #1f7a63 75%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  background: var(--brand-gradient);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .brand-name {
@@ -190,7 +230,7 @@ body {
 
 .primary-action {
   background: var(--accent);
-  color: #f3fbf8;
+  color: #ffffff;
 }
 .primary-action:hover { background: var(--accent-strong); }
 .primary-action:active { transform: translateY(1px); }
@@ -308,7 +348,7 @@ body {
   border-radius: 999px;
   padding: 1px 8px;
 }
-.access-state[data-set="true"] { color: #79d6b8; border-color: rgba(121, 214, 184, 0.4); }
+.access-state[data-set="true"] { color: var(--accent-2); border-color: rgba(0, 207, 106, 0.45); }
 
 .access-fields {
   margin-top: 12px;
@@ -337,7 +377,7 @@ body {
   border: 0;
   border-radius: 8px;
   background: var(--accent);
-  color: #f3fbf8;
+  color: #ffffff;
   padding: 0 13px;
   cursor: pointer;
 }
@@ -363,7 +403,7 @@ body {
   flex-direction: column;
   height: 100vh;
   background:
-    radial-gradient(140% 60% at 100% 0%, rgba(31, 122, 99, 0.05), transparent 60%),
+    radial-gradient(140% 60% at 100% 0%, rgba(0, 51, 201, 0.05), transparent 60%),
     var(--canvas);
 }
 
@@ -373,7 +413,7 @@ body {
   gap: 14px;
   padding: 16px 28px;
   border-bottom: 1px solid var(--border);
-  background: rgba(244, 241, 234, 0.82);
+  background: var(--canvas-glass);
   backdrop-filter: blur(8px);
 }
 
@@ -391,6 +431,24 @@ body {
   align-items: center;
   gap: 10px;
 }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.theme-toggle:hover { color: var(--accent); border-color: var(--accent-ring); }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: inline; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
 
 .status-pill {
   font-size: 11.5px;
@@ -463,7 +521,7 @@ body {
 
 .message-row.user .bubble {
   background: var(--accent);
-  color: #f4fbf8;
+  color: #ffffff;
   border-bottom-right-radius: 6px;
 }
 .message-row.assistant .bubble {
@@ -475,7 +533,7 @@ body {
 .message-row.error .bubble {
   background: var(--danger-soft);
   border: 1px solid rgba(180, 69, 47, 0.3);
-  color: #7a2c1d;
+  color: var(--danger-ink);
 }
 
 /* Answer typography */
@@ -493,7 +551,7 @@ body {
   font-size: 0.88em;
   background: var(--accent-soft);
   color: var(--accent-strong);
-  border: 1px solid rgba(31, 122, 99, 0.16);
+  border: 1px solid rgba(0, 51, 201, 0.18);
   border-radius: 6px;
   padding: 1px 6px;
   white-space: nowrap;
@@ -516,14 +574,14 @@ body {
   text-transform: uppercase;
   color: var(--accent-strong);
   background: var(--accent-soft);
-  border: 1px solid rgba(31, 122, 99, 0.18);
+  border: 1px solid rgba(0, 51, 201, 0.18);
   border-radius: 999px;
   padding: 3px 10px;
 }
 .answer-badge.catalog {
-  color: #7a5a1d;
-  background: #f6efe0;
-  border-color: rgba(122, 90, 29, 0.2);
+  color: var(--warn-ink);
+  background: var(--warn-soft);
+  border-color: rgba(255, 138, 0, 0.24);
 }
 .answer-badge::before {
   content: "";
@@ -658,8 +716,8 @@ body {
   place-items: center;
   font-weight: 700;
   font-size: 18px;
-  color: #06140f;
-  background: linear-gradient(150deg, #5ec5a6, #1f7a63 75%);
+  color: #ffffff;
+  background: var(--brand-gradient);
   box-shadow: var(--shadow-md);
 }
 .empty-state h2 {
@@ -694,7 +752,7 @@ body {
 .composer-region {
   padding: 14px 28px 20px;
   border-top: 1px solid var(--border);
-  background: rgba(244, 241, 234, 0.9);
+  background: var(--canvas-glass);
   backdrop-filter: blur(8px);
 }
 
@@ -707,7 +765,7 @@ body {
   border-radius: var(--radius-sm);
   background: var(--danger-soft);
   border: 1px solid rgba(180, 69, 47, 0.3);
-  color: #7a2c1d;
+  color: var(--danger-ink);
   font-size: 13px;
 }
 .error-banner #error-text { flex: 1; }
@@ -717,7 +775,7 @@ body {
   font-weight: 600;
   border: 1px solid rgba(180, 69, 47, 0.4);
   background: transparent;
-  color: #7a2c1d;
+  color: var(--danger-ink);
   border-radius: 8px;
   padding: 5px 11px;
   cursor: pointer;
@@ -766,7 +824,7 @@ body {
   font: inherit;
   font-size: 14px;
   font-weight: 650;
-  color: #f3fbf8;
+  color: #ffffff;
   background: var(--accent);
   border: 0;
   border-radius: var(--radius-sm);
@@ -816,7 +874,7 @@ body {
     position: fixed;
     inset: 0;
     z-index: 30;
-    background: rgba(10, 18, 15, 0.45);
+    background: rgba(6, 18, 51, 0.5);
     backdrop-filter: blur(2px);
   }
   .rail-toggle { display: inline-flex; }

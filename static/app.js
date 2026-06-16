@@ -12,6 +12,7 @@ const els = {
   sidebarScrim: document.getElementById("sidebar-scrim"),
   documentCount: document.getElementById("document-count"),
   corpusNote: document.getElementById("corpus-note"),
+  themeToggle: document.getElementById("theme-toggle"),
   newChat: document.getElementById("new-chat"),
   clearSessions: document.getElementById("clear-sessions"),
   sessionList: document.getElementById("session-list"),
@@ -405,14 +406,14 @@ function renderEmptyState() {
   const mark = document.createElement("div");
   mark.className = "empty-mark";
   mark.setAttribute("aria-hidden", "true");
-  mark.textContent = "SM";
+  mark.textContent = "Z";
 
   const heading = document.createElement("h2");
-  heading.textContent = "SecureMind RAG";
+  heading.textContent = "GRC Copilot";
 
   const copy = document.createElement("p");
   copy.textContent =
-    "Tra cứu chính sách, quy trình và bằng chứng ISMS với câu trả lời được trích dẫn từ tài liệu đã được lập chỉ mục.";
+    "Trợ lý tri thức GRC của ZaloPay. Tra cứu chính sách, quy trình, tiêu chuẩn bảo mật và tuân thủ — câu trả lời được trích dẫn từ tài liệu ISMS đã lập chỉ mục.";
 
   state.append(mark, heading, copy);
 
@@ -737,7 +738,25 @@ els.sidebarToggle.addEventListener("click", () => {
 });
 els.sidebarScrim.addEventListener("click", closeSidebar);
 
+/* ----------------------------------------------------------- theme */
+const THEME_KEY = "grc-theme";
+function applyTheme(theme) {
+  if (theme === "dark") document.documentElement.dataset.theme = "dark";
+  else delete document.documentElement.dataset.theme;
+}
+function initTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "dark" || stored === "light") return applyTheme(stored);
+  applyTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+els.themeToggle?.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  localStorage.setItem(THEME_KEY, next);
+});
+
 /* ----------------------------------------------------------- boot */
+initTheme();
 loadSessions();
 updateAccessState();
 renderSessions();
