@@ -11,6 +11,7 @@ from config import (
     AI_MODEL,
     ANSWER_LANGUAGE,
     DEBUG_RETRIEVAL,
+    EXCLUDED_SOURCE_SUBSTRINGS,
     MAX_CONTEXT_CHARS,
     MAX_TOKENS,
     MIN_RELEVANCE_SCORE,
@@ -1690,6 +1691,16 @@ def build_operational_prompt_hint(analysis: QueryAnalysis) -> str:
     )
 
 
+def is_excluded_source(document) -> bool:
+    """True when a chunk's source path matches a configured exclusion substring
+    (e.g. the SharePoint "Archives/" folder of superseded document versions)."""
+    if not EXCLUDED_SOURCE_SUBSTRINGS:
+        return False
+    metadata = getattr(document, "metadata", {}) or {}
+    source = str(metadata.get("source") or metadata.get("file_name") or "").lower()
+    return any(marker in source for marker in EXCLUDED_SOURCE_SUBSTRINGS)
+
+
 def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | None = None) -> tuple[list, list, dict]:
     analysis = analysis or analyze_question(question)
     strategy = decide_retrieval_strategy(analysis)
@@ -1744,6 +1755,12 @@ def retrieve_documents(question: str, vector_store, analysis: QueryAnalysis | No
         semantic_documents.append(selected_document)
 
     combined_candidates = rank_evidence(catalog_documents + keyword_documents + semantic_documents, analysis)
+    if EXCLUDED_SOURCE_SUBSTRINGS:
+        kept = [document for document in combined_candidates if not is_excluded_source(document)]
+        # Only apply the exclusion when relevant evidence remains, so a topic that
+        # genuinely only exists in an excluded location still returns an answer.
+        if kept:
+            combined_candidates = kept
     combined_documents = []
     seen_keys = set()
     result_limit = max(RETRIEVAL_K, 4) if (analysis.operational_intents or analysis.document_discovery_mode) else RETRIEVAL_K

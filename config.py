@@ -49,6 +49,15 @@ SEMANTIC_CHUNK_SIMILARITY_THRESHOLD = float(os.getenv("SEMANTIC_CHUNK_SIMILARITY
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "4"))
 RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "20"))
 MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "1.35"))
+# Substrings (matched against a chunk's source path, case-insensitive) whose
+# documents are dropped from retrieval. Defaults to the SharePoint "Archives/"
+# folder, which holds superseded 2022/2023 versions that otherwise pollute
+# results. Comma-separated; set empty to disable.
+EXCLUDED_SOURCE_SUBSTRINGS = [
+    item.strip().lower()
+    for item in os.getenv("EXCLUDED_SOURCE_SUBSTRINGS", "/archives/").split(",")
+    if item.strip()
+]
 DEBUG_RETRIEVAL = os.getenv("DEBUG_RETRIEVAL", "false").lower() in {
     "1",
     "true",
