@@ -43,16 +43,23 @@ def main() -> int:
     load_dotenv()
     results: list[CheckResult] = []
 
-    required_env = [
-        "AI_PLATFORM_API_KEY",
-        "TEAMS_BOT_APP_ID",
-        "TEAMS_BOT_APP_PASSWORD",
-    ]
-    for name in required_env:
-        if env_is_configured(name):
-            add_result(results, "PASS", name, "configured")
+    if env_is_configured("AI_PLATFORM_API_KEY"):
+        add_result(results, "PASS", "AI_PLATFORM_API_KEY", "configured")
+    else:
+        add_result(results, "FAIL", "AI_PLATFORM_API_KEY", "missing")
+
+    # Match teams_bot's credential resolution: MICROSOFT_APP_* is preferred, with
+    # TEAMS_BOT_* / MS_* accepted as aliases. Checking only TEAMS_BOT_* gave a
+    # false FAIL when the bot is configured via MICROSOFT_APP_*.
+    bot_credentials = {
+        "bot app id": ("MICROSOFT_APP_ID", "TEAMS_BOT_APP_ID", "MS_CLIENT_ID"),
+        "bot app password": ("MICROSOFT_APP_PASSWORD", "TEAMS_BOT_APP_PASSWORD", "MS_CLIENT_SECRET"),
+    }
+    for label, names in bot_credentials.items():
+        if any(env_is_configured(name) for name in names):
+            add_result(results, "PASS", label, "configured")
         else:
-            add_result(results, "FAIL", name, "missing")
+            add_result(results, "FAIL", label, f"set one of: {', '.join(names)}")
 
     vector_dir = Path(os.getenv("VECTOR_DB_DIR", "vector_db"))
     index_file = vector_dir / "index.faiss"
