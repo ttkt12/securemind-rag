@@ -19,7 +19,7 @@ from botbuilder.schema import Activity, ActivityTypes
 from dotenv import load_dotenv
 
 from answer_engine import answer_chat
-from catalog_service import catalog_count_payload, catalog_documents_payload
+from catalog_service import catalog_count_payload, catalog_documents_payload, derive_code
 from config import (
     AI_BASE_URL,
     AI_MODEL,
@@ -306,20 +306,34 @@ def validate_startup_config() -> None:
         print("- Web API access token: not enforced (REQUIRE_APP_ACCESS_TOKEN=false)")
 
 
+def source_identity(source: str) -> str:
+    """Canonical identity for a chunk's source, so duplicate file copies of the
+    same document (e.g. a clean export and a "...Mac mini.pdf" copy) collapse to
+    one entry via their shared document code."""
+    return derive_code(source) or source
+
+
+def source_label(source: str, page_number) -> str:
+    base = derive_code(source) or source
+    return f"{base} page {page_number}" if page_number is not None else base
+
+
 def format_sources(sources: list, limit: int = 3) -> str:
     entries = []
     seen = set()
     for document in sources:
         if isinstance(document, dict):
             label = str(document.get("label") or document.get("filename") or "").strip()
+            key = label
         else:
             source = document_source_name(document)
             page = document.metadata.get("page")
-            page_label = f" page {page + 1}" if isinstance(page, int) else ""
-            label = f"{source}{page_label}"
-        if not label or label in seen:
+            page_number = page + 1 if isinstance(page, int) else None
+            label = source_label(source, page_number)
+            key = (source_identity(source), page_number)
+        if not label or key in seen:
             continue
-        seen.add(label)
+        seen.add(key)
         entries.append(label)
         if len(entries) >= limit:
             break
@@ -404,16 +418,16 @@ def web_source_records(sources: list) -> list[dict]:
         source = document_source_name(document)
         page = document.metadata.get("page")
         page_number = page + 1 if isinstance(page, int) else None
-        key = (source, page_number)
+        # Collapse duplicate file copies of the same document via its code.
+        key = (source_identity(source), page_number)
         if key in seen:
             continue
         seen.add(key)
-        page_label = f" page {page_number}" if page_number is not None else ""
         records.append(
             {
                 "filename": source,
                 "page": page_number,
-                "label": f"{source}{page_label}",
+                "label": source_label(source, page_number),
             }
         )
     return records
