@@ -5,6 +5,7 @@ from openai import OpenAI
 from catalog_metadata import build_metadata_answer, get_catalog_record
 from catalog_service import answer_catalog_count, answer_catalog_list
 from document_evidence_metadata import answer_document_metadata_from_evidence
+from document_recommendation import build_document_recommendation
 from intent_router import detect_intent
 from rag_core import answer_question, load_vector_store, make_client
 
@@ -57,6 +58,19 @@ def answer_chat(
                 "llm_used": False,
             }
         return payload
+
+    # "Which document should I look at for X?" questions are answered directly
+    # from catalog metadata, which routes by topic far more reliably than chunk
+    # embeddings for this phrasing (and needs no LLM call).
+    recommendation = build_document_recommendation(question)
+    if recommendation is not None:
+        recommendation["session_id"] = session_id or None
+        recommendation["metadata"] = _debug_metadata(
+            recommendation["metadata"], "document_discovery", False, False
+        )
+        if debug:
+            recommendation["debug"] = {"intent": "document_discovery", **recommendation["metadata"]}
+        return recommendation
 
     # Document-specific metadata questions (document code + aspect). The catalog
     # is used ONLY to locate/disambiguate the document; the answer comes from
