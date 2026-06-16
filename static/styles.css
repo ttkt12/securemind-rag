@@ -45,6 +45,11 @@
 
 * { box-sizing: border-box; }
 
+/* The HTML `hidden` attribute must always win over component `display` rules
+   (e.g. .error-banner / .access-fields use display:flex, which would otherwise
+   override the UA [hidden]{display:none} and leave them permanently visible). */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;

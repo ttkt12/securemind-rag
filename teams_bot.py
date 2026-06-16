@@ -368,10 +368,13 @@ async def health(_request: web.Request) -> web.Response:
 
 
 async def web_chat_home(_request: web.Request) -> web.StreamResponse:
+    # Always revalidate the HTML so browsers pick up new ?v= asset references
+    # immediately (the static assets themselves stay cache-busted by ?v=).
+    no_cache = {"Cache-Control": "no-cache"}
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
-        return web.FileResponse(index_file)
-    return web.Response(text=WEB_CHAT_HTML, content_type="text/html")
+        return web.FileResponse(index_file, headers=no_cache)
+    return web.Response(text=WEB_CHAT_HTML, content_type="text/html", headers=no_cache)
 
 
 def web_source_records(sources: list) -> list[dict]:
