@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import os
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -348,19 +349,38 @@ class SecureMindTeamsBot(ActivityHandler):
             await turn_context.send_activity("Vui lòng nhập câu hỏi về tài liệu ISMS, bảo mật hoặc tuân thủ.")
             return
 
+        started = time.perf_counter()
+        answer_task = asyncio.ensure_future(
+            asyncio.to_thread(answer_chat, user_text, self.vector_store, self.client)
+        )
+
+        # The LLM call can take a long time on a busy model endpoint. Keep a
+        # typing indicator alive so the user sees the bot is working instead of
+        # staring at silence (Teams typing indicators expire after a few seconds).
         try:
-            result = await asyncio.to_thread(
-                answer_chat,
-                user_text,
-                self.vector_store,
-                self.client,
-            )
-            answer = result.get("answer", "")
-            sources = result.get("sources", [])
-            response_text = f"{answer}{format_sources(sources, limit=3)}"
-            await turn_context.send_activity(MessageFactory.text(response_text))
+            while True:
+                await turn_context.send_activity(Activity(type=ActivityTypes.typing))
+                done, _ = await asyncio.wait({answer_task}, timeout=4.0)
+                if done:
+                    break
+            result = answer_task.result()
         except Exception:
+            answer_task.cancel()
             await turn_context.send_activity(ERROR_MESSAGE)
+            return
+
+        elapsed = time.perf_counter() - started
+        usage = result.get("usage")
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        print(
+            f"[teams] answered in {elapsed:.1f}s "
+            f"(answer_type={result.get('answer_type')}, completion_tokens={completion_tokens})"
+        )
+
+        answer = result.get("answer", "")
+        sources = result.get("sources", [])
+        response_text = f"{answer}{format_sources(sources, limit=3)}"
+        await turn_context.send_activity(MessageFactory.text(response_text))
 
 
 async def health(_request: web.Request) -> web.Response:
