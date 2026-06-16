@@ -16,6 +16,7 @@ from botbuilder.core import (
     TurnContext,
 )
 from botbuilder.schema import Activity, ActivityTypes
+from botframework.connector.auth import MicrosoftAppCredentials
 from dotenv import load_dotenv
 
 from answer_engine import answer_chat
@@ -370,6 +371,7 @@ class SecureMindTeamsBot(ActivityHandler):
         # answer at all. Acknowledge immediately, then compute and deliver the
         # answer proactively on a background task so the /api/messages turn
         # returns right away.
+        print(f"[teams] received: {user_text[:80]!r}")
         await turn_context.send_activity(Activity(type=ActivityTypes.typing))
         reference = TurnContext.get_conversation_reference(turn_context.activity)
         asyncio.ensure_future(self._process_and_reply(reference, user_text))
@@ -413,9 +415,15 @@ class SecureMindTeamsBot(ActivityHandler):
         if self.adapter is None:
             return
         try:
+            # Proactive turns start fresh, so the bot's app credentials must
+            # explicitly trust the channel service URL or the connector rejects
+            # the outbound call (the in-turn reply path trusts it automatically).
+            service_url = getattr(reference, "service_url", None)
+            if service_url:
+                MicrosoftAppCredentials.trust_service_url(service_url)
             await self.adapter.continue_conversation(reference, callback, self.app_id)
         except Exception as error:  # connector/auth hiccup — log, don't crash the task
-            print(f"[teams] proactive send failed: {error.__class__.__name__}")
+            print(f"[teams] proactive send failed: {error.__class__.__name__}: {error}")
 
 
 async def health(_request: web.Request) -> web.Response:

@@ -7,12 +7,20 @@ questions still flow to retrieval / metadata / RAG.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 from catalog_service import load_document_catalog
 
 _GREETING_WORDS = {"hi", "hello", "hey", "helo", "hallo", "chao", "alo", "yo"}
 _GREETING_PHRASES = {"hi", "hello", "hey", "chao", "xin chao", "chao ban", "alo", "hallo"}
+# Short acknowledgements / fillers that carry no question — answering them with
+# retrieved document content looks broken, so nudge instead.
+_ACK = {
+    "ok", "oke", "okay", "oki", "okê", "k", "kk", "done", "end", "fine",
+    "thanks", "thank", "tks", "ty", "cam on", "uh", "um", "hmm", "hm",
+    "vang", "u", "uhm", "roger", "noted",
+}
 _IDENTITY = (
     "ban la ai", "ban la gi", "ban ten gi", "ban ten la gi", "ai vay",
     "gioi thieu ve ban", "gioi thieu ban", "who are you", "what are you",
@@ -31,18 +39,29 @@ def _fold(text: str) -> str:
     return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
 
 
-def detect_meta_intent(question: str) -> str | None:
-    """Return "greeting" | "identity" | "capabilities", or None.
+def _collapse_repeats(text: str) -> str:
+    """hiii -> hi, alooo -> alo, okkk -> ok (collapse runs of 3+ identical chars)."""
+    return re.sub(r"(.)\1{2,}", r"\1", text)
 
-    Greetings only match very short messages so a real question that merely opens
-    with "chào" still goes to retrieval.
+
+def detect_meta_intent(question: str) -> str | None:
+    """Return "greeting" | "ack" | "identity" | "capabilities", or None.
+
+    Greetings/acks only match very short messages so a real question that merely
+    opens with "chào" or ends with "ok" still goes to retrieval.
     """
     folded = _fold(question)
     if not folded:
         return None
-    words = folded.split()
-    if folded in _GREETING_PHRASES or (len(words) <= 2 and words[0] in _GREETING_WORDS):
+    collapsed = _collapse_repeats(folded)
+    words = collapsed.split()
+    if collapsed in _GREETING_PHRASES or (len(words) <= 2 and words[0] in _GREETING_WORDS):
         return "greeting"
+    # Whole short message is just fillers/acks (e.g. "ok", "end", "thanks", "uh").
+    if len(words) <= 3 and words and all(word in _ACK for word in words):
+        return "ack"
+    if collapsed in _ACK:
+        return "ack"
     if any(phrase in folded for phrase in _IDENTITY):
         return "identity"
     if any(phrase in folded for phrase in _CAPABILITIES):
@@ -57,6 +76,11 @@ def meta_answer(intent: str) -> str:
             "Chào bạn 👋 Mình là **GRC Assistant** — trợ lý tra cứu tài liệu ISMS, bảo mật "
             "và tuân thủ của ZaloPay. Bạn cần tra cứu chính sách, quy trình hay tiêu chuẩn "
             "nào? Ví dụ: \"quy trình cấp quyền truy cập\", \"ZION-QT-04 có mấy phiên bản\"."
+        )
+    if intent == "ack":
+        return (
+            "Mình sẵn sàng 👍 Bạn cứ hỏi về chính sách, quy trình hay tiêu chuẩn ISMS nhé. "
+            "Ví dụ: \"quy trình cấp quyền truy cập\", \"ZION-QT-04 có mấy phiên bản\"."
         )
     if intent == "identity":
         return (
