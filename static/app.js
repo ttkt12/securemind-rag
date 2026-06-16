@@ -168,7 +168,7 @@ function appendInline(parent, text) {
   }
 }
 
-function createFormattedAnswer(text) {
+function createFormattedAnswer(text, citations) {
   const block = document.createElement("div");
   block.className = "message-text";
   const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
@@ -220,7 +220,113 @@ function createFormattedAnswer(text) {
   if (!block.childNodes.length) {
     block.textContent = "Không có nội dung trả lời.";
   }
+  if (citations && citations.length) linkCitations(block, citations);
   return block;
+}
+
+/* Turn inline [n] markers in the answer into citation chips that map to the
+   numbered source cards (hover = source label, click = scroll + highlight). */
+function linkCitations(block, citations) {
+  const byNumber = new Map(citations.map((c) => [Number(c.n), c]));
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) {
+    if (/\[\d+\]/.test(walker.currentNode.nodeValue)) textNodes.push(walker.currentNode);
+  }
+  textNodes.forEach((node) => {
+    const value = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    const re = /\[(\d+)\]/g;
+    let last = 0;
+    let match;
+    while ((match = re.exec(value))) {
+      const n = Number(match[1]);
+      const cite = byNumber.get(n);
+      if (match.index > last) frag.appendChild(document.createTextNode(value.slice(last, match.index)));
+      if (!cite) {
+        frag.appendChild(document.createTextNode(match[0]));
+      } else {
+        const sup = document.createElement("sup");
+        sup.className = "cite";
+        sup.textContent = String(n);
+        sup.tabIndex = 0;
+        sup.dataset.cite = String(n);
+        sup.title = cite.label || `Nguồn ${n}`;
+        const go = () => {
+          const card = sup.closest(".bubble")?.querySelector(`.source-card[data-cite="${n}"]`);
+          if (!card) return;
+          card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          card.classList.add("source-card--active");
+          setTimeout(() => card.classList.remove("source-card--active"), 1600);
+        };
+        sup.addEventListener("click", go);
+        sup.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            go();
+          }
+        });
+        frag.appendChild(sup);
+      }
+      last = match.index + match[0].length;
+    }
+    if (last < value.length) frag.appendChild(document.createTextNode(value.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+function appendCitationSources(bubble, citations) {
+  if (!citations.length) return;
+  const wrap = document.createElement("section");
+  wrap.className = "sources";
+  wrap.setAttribute("aria-label", "Nguồn tài liệu");
+
+  const title = document.createElement("p");
+  title.className = "sources-title";
+  title.textContent = citations.length > 1 ? `Nguồn (${citations.length})` : "Nguồn";
+  wrap.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "source-list";
+  wrap.appendChild(list);
+
+  citations.forEach((cite) => {
+    const card = document.createElement("div");
+    card.className = "source-card";
+    card.dataset.cite = String(cite.n);
+    card.tabIndex = 0;
+
+    const idx = document.createElement("span");
+    idx.className = "source-index";
+    idx.textContent = String(cite.n);
+
+    const body = document.createElement("div");
+    body.className = "source-body";
+    const name = document.createElement("div");
+    name.className = "source-name";
+    name.textContent = cite.filename || cite.label || `Nguồn ${cite.n}`;
+    body.appendChild(name);
+
+    const meta = document.createElement("div");
+    meta.className = "source-meta";
+    if (cite.code) {
+      const code = document.createElement("code");
+      code.className = "doc-code";
+      code.textContent = cite.code;
+      meta.appendChild(code);
+    }
+    if (cite.page) {
+      const page = document.createElement("span");
+      page.textContent = `trang ${cite.page}`;
+      meta.appendChild(page);
+    }
+    if (meta.childNodes.length) body.appendChild(meta);
+
+    card.append(idx, body);
+    list.appendChild(card);
+  });
+
+  bubble.appendChild(wrap);
 }
 
 function extractDocumentCode(text) {
@@ -449,8 +555,10 @@ function appendMessage(message) {
     bubble.appendChild(dots);
   } else if (message.role === "assistant" && message.status !== "error") {
     addAnswerToolbar(bubble, message.content || "", message.answer_type, message.metadata);
-    bubble.appendChild(createFormattedAnswer(message.content));
-    if (message.answer_type !== "catalog") {
+    bubble.appendChild(createFormattedAnswer(message.content, message.citations));
+    if (message.citations && message.citations.length) {
+      appendCitationSources(bubble, message.citations);
+    } else if (message.answer_type !== "catalog") {
       appendSources(bubble, message.sources || []);
     }
   } else {
@@ -633,6 +741,7 @@ async function ask(question) {
       role: "assistant",
       content: payload.answer || "Không có nội dung trả lời.",
       sources: payload.sources || [],
+      citations: payload.citations || [],
       answer_type: payload.answer_type || (payload.metadata && payload.metadata.answer_type) || "rag",
       metadata: payload.metadata || {},
     });

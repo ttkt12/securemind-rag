@@ -2571,7 +2571,8 @@ def call_llm(
                 "/no_think\n"
                 "Trả lời trực tiếp bằng nội dung cuối cùng. "
                 "Không suy luận nội bộ. Không giải thích quá trình suy luận. "
-                "Không tự thêm phần Sources, Nguồn, References hoặc trích dẫn nguồn ở cuối câu trả lời.\n\n"
+                "Chèn số nguồn [n] ngay sau mỗi ý lấy từ tài liệu (theo số [n] trong "
+                "Ngữ cảnh tài liệu). Không thêm mục 'Nguồn:' liệt kê ở cuối câu trả lời.\n\n"
                 f"{memory_section}"
                 f"{history_section}"
                 f"Ngữ cảnh tài liệu:\n{context}\n\n"
@@ -2652,6 +2653,19 @@ def answer_question(
     context, context_budget = format_context_with_metadata(relevant_documents)
     if debug_info_out is not None:
         debug_info_out["context_budget"] = context_budget
+    # Numbered citation list aligned with the [n] markers shown to the LLM in the
+    # context, so the UI can render inline [n] chips that map to these sources.
+    if metadata_out is not None:
+        metadata_out["citations"] = [
+            {
+                "n": index + 1,
+                "label": source.get("label"),
+                "filename": source.get("filename"),
+                "page": source.get("page"),
+                "code": source.get("document_code"),
+            }
+            for index, source in enumerate(context_budget.get("sources", []))
+        ]
     if not has_sufficient_evidence(context, analysis):
         return NO_RELEVANT_CONTEXT_ANSWER, relevant_documents, None
 
@@ -2749,9 +2763,12 @@ def build_system_prompt(concise_retry: bool = False) -> str:
             "công ty, tài liệu, tiêu chuẩn, chính sách, quy trình và mã tài "
             "liệu. Trả lời ngắn gọn bằng tiếng Việt, dùng gạch đầu dòng cho "
             "danh sách. Bắt đầu ngay bằng câu trả lời cuối cùng. Không giải "
-            "thích quá trình suy luận hoặc chain-of-thought. Không thêm phần "
-            "Sources, Nguồn, References, Tài liệu tham khảo hoặc danh sách nguồn "
-            "trong nội dung trả lời; nguồn sẽ được hiển thị riêng bởi ứng dụng. "
+            "thích quá trình suy luận hoặc chain-of-thought. Sau mỗi câu/ý lấy "
+            "từ tài liệu, chèn ngay số nguồn tương ứng trong ngoặc vuông, ví dụ "
+            "[1] hoặc [2][3], dựa đúng theo số [n] đứng đầu mỗi đoạn trong phần "
+            "Ngữ cảnh tài liệu. Chỉ dùng các số nguồn có trong ngữ cảnh, không bịa "
+            "số. KHÔNG thêm một mục 'Nguồn:'/'Sources:'/'References' liệt kê ở cuối "
+            "— chỉ chèn [n] inline; danh sách nguồn được ứng dụng hiển thị riêng. "
             "Nếu người dùng hỏi số lượng hoặc danh sách tài liệu trong knowledge base, "
             "không được suy luận từ các chunks truy xuất; phải dùng catalog metadata "
             "nếu có, nếu không thì nói catalog không khả dụng. "

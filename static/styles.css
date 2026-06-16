@@ -545,6 +545,32 @@ body {
 .message-text li { margin: 3px 0; padding-left: 2px; }
 .message-text li::marker { color: var(--accent); font-variant-numeric: tabular-nums; }
 .message-text strong { font-weight: 660; color: var(--ink); }
+
+/* Inline citation chips ([n]) that map to the numbered source cards */
+.message-text sup.cite {
+  cursor: pointer;
+  display: inline-block;
+  min-width: 15px;
+  padding: 0 4px;
+  margin: 0 1px;
+  font-size: 0.66em;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: super;
+  text-align: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ring);
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+  transition: background 120ms ease, color 120ms ease;
+}
+.message-text sup.cite:hover,
+.message-text sup.cite:focus-visible { background: var(--accent); color: #ffffff; outline: none; }
+.source-card.source-card--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
 .message-text code,
 .doc-code {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

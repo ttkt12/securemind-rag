@@ -541,6 +541,9 @@ def create_web_chat_handler(vector_store, client):
             return web.json_response({"error": ERROR_MESSAGE}, status=500)
 
         sources = result.get("sources", [])
+        # Numbered citation list ([n] -> source) for RAG answers, used by the UI
+        # for inline citation chips that map to the source cards.
+        citations = (result.get("metadata") or {}).get("citations") or []
         public_metadata = public_chat_metadata(result.get("metadata", {}))
         answer_type = public_metadata.get("answer_type")
         if answer_type == "catalog":
@@ -548,11 +551,15 @@ def create_web_chat_handler(vector_store, client):
         elif answer_type == "metadata":
             # Metadata answers already carry normalized source records (plain dicts).
             out_sources = sources if isinstance(sources, list) else []
+        elif citations:
+            # The citation list IS the numbered source set; the UI renders it.
+            out_sources = []
         else:
             out_sources = web_source_records(sources)
         payload = {
             "answer": result.get("answer", ""),
             "sources": out_sources,
+            "citations": citations,
             "session_id": result.get("session_id"),
             "answer_type": public_metadata.get("answer_type", "rag"),
             "metadata": public_metadata,
