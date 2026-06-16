@@ -58,6 +58,29 @@ def _recommendation_line(candidate: dict) -> str:
     return f"* {code or title or 'Tài liệu'}"
 
 
+def related_documents_hint(question: str, limit: int = 3) -> str | None:
+    """A short 'related documents' suggestion appended to a grounded
+    not-found answer. Returns None when nothing in the catalog is relevant
+    enough — so we never point users at unrelated documents.
+    """
+    catalog = load_document_catalog()
+    if not catalog:
+        return None
+    candidates = find_catalog_candidates(question, catalog, limit=limit)
+    if not candidates:
+        return None
+    top_score = int(candidates[0].get("catalog_score", 0))
+    if top_score < _MIN_TOP_SCORE:
+        return None
+    cutoff = max(_MIN_TOP_SCORE, top_score * 0.5)
+    selected = [c for c in candidates if int(c.get("catalog_score", 0)) >= cutoff][:limit]
+    if not selected:
+        return None
+    lines = ["", "Một số tài liệu có thể liên quan:"]
+    lines.extend(_recommendation_line(candidate) for candidate in selected)
+    return "\n".join(lines)
+
+
 def build_document_recommendation(question: str, limit: int = 4) -> dict | None:
     """Recommend the most relevant documents for a "which document" question.
 

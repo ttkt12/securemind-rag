@@ -4,11 +4,12 @@ from openai import OpenAI
 
 from catalog_metadata import build_metadata_answer, get_catalog_record
 from catalog_service import answer_catalog_count, answer_catalog_list
+from conversational import detect_meta_intent, meta_answer
 from document_code_utils import find_code_candidates, resolve_code
 from document_evidence_metadata import answer_document_metadata_from_evidence
-from document_recommendation import build_document_recommendation
+from document_recommendation import build_document_recommendation, related_documents_hint
 from intent_router import detect_intent
-from rag_core import answer_question, load_vector_store, make_client
+from rag_core import NO_RELEVANT_CONTEXT_ANSWER, answer_question, load_vector_store, make_client
 
 
 def _last_document_code(history: list | None) -> str | None:
@@ -44,6 +45,23 @@ def answer_chat(
     memory_context: str = "",
 ) -> dict:
     intent = detect_intent(question, history)
+
+    # Greetings / "who are you" / "what can you do": answer about the assistant
+    # itself (grounded — never invents policy) instead of running retrieval.
+    meta_intent = detect_meta_intent(question)
+    if meta_intent:
+        meta = _debug_metadata({"answer_type": "meta"}, meta_intent, False, False)
+        payload = {
+            "answer": meta_answer(meta_intent),
+            "sources": [],
+            "usage": None,
+            "session_id": session_id or None,
+            "answer_type": "meta",
+            "metadata": meta,
+        }
+        if debug:
+            payload["debug"] = {"intent": meta_intent, "answer_type": "meta"}
+        return payload
 
     if intent == "catalog_count":
         payload = answer_catalog_count()
@@ -145,6 +163,14 @@ def answer_chat(
         debug_info_out=retrieval_debug if debug else None,
         metadata_out=response_metadata,
     )
+    # Grounded fallback: when nothing in the indexed text answers the question,
+    # point to the most relevant documents instead of a bare "not found", and
+    # drop the (rejected) retrieved sources so we don't cite irrelevant docs.
+    if answer == NO_RELEVANT_CONTEXT_ANSWER:
+        hint = related_documents_hint(question)
+        if hint:
+            answer = f"{answer}\n{hint}"
+            sources = []
     response_metadata.setdefault("answer_type", "rag")
     _debug_metadata(response_metadata, intent, True, True)
 
