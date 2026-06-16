@@ -184,7 +184,9 @@ Xem thêm: [SECURITY.md](SECURITY.md)
 
 ## 📄 Tài liệu
 
-[Teams setup](README_TEAMS.md) · [Deployment](DEPLOYMENT.md) · [API contract](API_CONTRACT.md) · [Chunking](CHUNKING_STRATEGY.md) · [Smart RAG](SMART_RAG.md) · [Frontend](README_FRONTEND.md)
+[🎬 Demo script](DEMO.md) · [Teams setup](README_TEAMS.md) · [Deployment](DEPLOYMENT.md) · [API contract](API_CONTRACT.md) · [Chunking](CHUNKING_STRATEGY.md) · [Smart RAG](SMART_RAG.md) · [Frontend](README_FRONTEND.md)
+
+> **Demo nhanh:** `bash scripts/demo.sh` (macOS/Linux) hoặc `powershell -ExecutionPolicy Bypass -File scripts\demo.ps1` (Windows) → mở web UI + câu hỏi mẫu. Chi tiết: [DEMO.md](DEMO.md).
 
 <div align="center">
 <sub>Built for ZaloPay Compliance · GRC — grounded, cited, internal.</sub>
