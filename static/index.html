@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>SecureMind RAG</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260614-ui2">
+  <title>SecureMind RAG — ISMS Knowledge Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260616-ui3">
 </head>
 <body>
-  <main class="app-shell">
-    <aside class="control-rail" aria-label="SecureMind RAG workspace">
+  <div class="app-shell" id="app-shell">
+    <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
+
+    <aside class="control-rail" id="sidebar" aria-label="SecureMind RAG workspace">
       <header class="brand-block">
         <div class="brand-mark" aria-hidden="true">SM</div>
         <div class="brand-copy">
@@ -19,74 +21,87 @@
       </header>
 
       <section class="corpus-card" aria-label="Knowledge base status">
-        <p class="eyebrow">Corpus</p>
+        <p class="eyebrow">Knowledge base</p>
         <div class="corpus-count">
           <span id="document-count">--</span>
-          <span>documents</span>
+          <span class="corpus-unit">documents</span>
         </div>
-        <p class="corpus-note" id="corpus-note">Checking knowledge catalog...</p>
-      </section>
-
-      <section class="access-card" id="access-card" aria-label="App access token">
-        <button class="access-toggle" id="access-toggle" type="button" aria-expanded="false">
-          Access token
-          <span id="access-state">Not set</span>
-        </button>
-        <div class="access-fields" id="access-fields" hidden>
-          <label for="access-token">X-App-Access-Token</label>
-          <div class="token-row">
-            <input id="access-token" type="password" autocomplete="off" placeholder="Paste token for this browser session">
-            <button id="save-token" type="button">Save</button>
-          </div>
-          <button class="clear-token" id="clear-token" type="button">Clear token</button>
-        </div>
+        <p class="corpus-note" id="corpus-note">Checking knowledge catalog…</p>
       </section>
 
       <section class="session-tools" aria-label="Chat controls">
         <button class="primary-action" id="new-chat" type="button">New chat</button>
-        <button class="secondary-action" id="clear-sessions" type="button">Clear</button>
+        <button class="secondary-action" id="clear-sessions" type="button" title="Clear all local sessions">Clear</button>
       </section>
 
       <section class="session-block" aria-label="Chat sessions">
         <div class="section-heading">
           <p class="eyebrow">Sessions</p>
-          <span id="session-count">0</span>
+          <span class="session-count" id="session-count">0</span>
         </div>
         <div class="session-list" id="session-list"></div>
+      </section>
+
+      <section class="access-card" id="access-card" aria-label="App access token">
+        <button class="access-toggle" id="access-toggle" type="button" aria-expanded="false">
+          <span>Access token</span>
+          <span class="access-state" id="access-state">Not set</span>
+        </button>
+        <div class="access-fields" id="access-fields" hidden>
+          <label for="access-token">X-App-Access-Token (this browser session only)</label>
+          <div class="token-row">
+            <input id="access-token" type="password" autocomplete="off" placeholder="Paste token">
+            <button id="save-token" type="button">Save</button>
+          </div>
+          <button class="clear-token" id="clear-token" type="button">Clear token</button>
+        </div>
       </section>
     </aside>
 
     <section class="chat-workspace" aria-label="SecureMind chat">
       <header class="chat-topbar">
-        <div>
+        <button class="rail-toggle" id="sidebar-toggle" type="button" aria-label="Toggle sidebar" aria-expanded="false">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
+        <div class="topbar-title">
           <p class="eyebrow">Internal security knowledge</p>
-          <h1>Ask the ISMS knowledge base</h1>
+          <h1>ISMS knowledge assistant</h1>
         </div>
         <div class="topbar-actions">
-          <span class="status-pill" id="status-pill">Ready</span>
-          <button class="retry-button" id="retry-last" type="button" disabled>Retry</button>
+          <span class="status-pill" id="status-pill" data-state="ready">Ready</span>
+          <button class="retry-button" id="retry-last" type="button" hidden>Retry</button>
         </div>
       </header>
 
       <div class="messages" id="messages" aria-live="polite" aria-label="Conversation"></div>
 
-      <form class="composer" id="chat-form">
-        <label class="sr-only" for="question">Question</label>
-        <textarea
-          id="question"
-          name="question"
-          rows="2"
-          placeholder="Ask about ISO 27001, ISMS scope, password policy, audit evidence, or a document code"
-          autocomplete="off"
-          required
-        ></textarea>
-        <button id="send" class="send-button" type="submit" disabled>
-          Send
-        </button>
-      </form>
+      <div class="composer-region">
+        <div class="error-banner" id="error-banner" role="alert" hidden>
+          <span id="error-text"></span>
+          <button class="error-retry" id="error-retry" type="button">Retry</button>
+        </div>
+        <form class="composer" id="chat-form">
+          <label class="sr-only" for="question">Question</label>
+          <textarea
+            id="question"
+            name="question"
+            rows="1"
+            placeholder="Ask about an ISMS policy, procedure, scope, audit evidence, or a document code…"
+            autocomplete="off"
+            required
+          ></textarea>
+          <button id="send" class="send-button" type="submit" disabled aria-label="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+              <path d="M4 12 20 4l-4 16-4-7-8-1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            </svg>
+            <span>Send</span>
+          </button>
+        </form>
+        <p class="composer-hint">Enter to send · Shift+Enter for a new line · answers are grounded in indexed documents</p>
+      </div>
     </section>
-  </main>
+  </div>
 
-  <script src="/static/app.js?v=20260614-ui2" defer></script>
+  <script src="/static/app.js?v=20260616-ui3" defer></script>
 </body>
 </html>
