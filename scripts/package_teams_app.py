@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "teams"
-DEFAULT_OUTPUT = ROOT / "securemind-rag-teams-template.zip"
+# teams_app/ carries the real deployment values, so the bare command produces an
+# uploadable package. teams/ stays as a parametric template (use --bot-id/--domain).
+DEFAULT_SOURCE = ROOT / "teams_app"
+DEFAULT_OUTPUT = ROOT / "securemind-rag-teams-app.zip"
+
+PLACEHOLDER_GUID = "00000000-0000-0000-0000-000000000000"
+GUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 def load_manifest(path: Path) -> dict:
@@ -46,10 +54,65 @@ def validate_package_inputs(source_dir: Path) -> None:
     load_manifest(source_dir / "manifest.json")
 
 
+def _is_real_guid(value: str) -> bool:
+    return bool(GUID_RE.match(value)) and value != PLACEHOLDER_GUID
+
+
+def validate_manifest_values(manifest: dict) -> None:
+    """Reject a manifest that would be rejected by the Teams upload validator.
+
+    Catches the common failure mode: packaging a template whose id/botId/domain
+    are still placeholders, which Teams refuses without a clear reason.
+    """
+    problems = []
+
+    app_id = str(manifest.get("id", "")).strip()
+    if not _is_real_guid(app_id):
+        problems.append(
+            f"manifest 'id' is not a real GUID (got {app_id or 'empty'!r}). "
+            "Pass --bot-id, or build from a folder with real values."
+        )
+
+    bot_ids = [str(bot.get("botId", "")).strip() for bot in manifest.get("bots", [])]
+    for bot_id in bot_ids:
+        if not _is_real_guid(bot_id):
+            problems.append(
+                f"bots[].botId is not a real GUID (got {bot_id or 'empty'!r}). "
+                "Pass --bot-id, or build from a folder with real values."
+            )
+
+    for domain in manifest.get("validDomains", []):
+        clean = str(domain).strip()
+        if not clean or "REPLACE" in clean.upper() or "://" in clean:
+            problems.append(
+                f"validDomains entry is invalid (got {clean or 'empty'!r}). "
+                "Use the runtime hostname without https://, e.g. via --domain."
+            )
+
+    developer = manifest.get("developer", {})
+    for key in ("websiteUrl", "privacyUrl", "termsOfUseUrl"):
+        url = str(developer.get(key, "")).strip()
+        if "REPLACE" in url.upper():
+            problems.append(f"developer.{key} still contains a placeholder (got {url!r}).")
+
+    if problems:
+        raise ValueError(
+            "Teams manifest is not ready to package:\n  - " + "\n  - ".join(problems)
+        )
+
+    # Non-fatal: Teams recommends (and this project's convention is) id == botId.
+    if bot_ids and app_id not in bot_ids:
+        print(
+            f"Warning: manifest id ({app_id}) differs from botId ({bot_ids[0]}). "
+            "Teams permits this, but the project convention uses the same GUID."
+        )
+
+
 def build_package(source_dir: Path, output_path: Path, bot_id: str = "", domain: str = "") -> None:
     validate_package_inputs(source_dir)
     manifest = load_manifest(source_dir / "manifest.json")
     manifest = replace_placeholders(manifest, bot_id=bot_id, domain=domain)
+    validate_manifest_values(manifest)
 
     build_dir = source_dir / ".package_build"
     build_dir.mkdir(exist_ok=True)
@@ -74,7 +137,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    build_package(args.source, args.output, bot_id=args.bot_id, domain=args.domain)
+    try:
+        build_package(args.source, args.output, bot_id=args.bot_id, domain=args.domain)
+    except (ValueError, FileNotFoundError) as error:
+        print(f"Error: {error}")
+        return 1
     print(f"Teams package written: {args.output}")
     return 0
 

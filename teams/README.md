@@ -35,19 +35,22 @@ outline.png
 
 Zip the contents of this folder, not the folder itself.
 
-You can build the template package with:
+> This folder is the **parametric template**. The packager defaults to the
+> canonical `teams_app/` folder (which holds this deployment's real values), so
+> a bare `python scripts/package_teams_app.py` does **not** build from here.
+
+To build a package from this template with real values injected at build time
+(without editing the template files):
 
 ```powershell
-python scripts/package_teams_app.py
-```
-
-To generate a package with real values without editing the template:
-
-```powershell
-python scripts/package_teams_app.py `
+python scripts/package_teams_app.py --source teams `
   --bot-id "<MICROSOFT_APP_ID>" `
   --domain "endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn"
 ```
+
+Building from this template without `--bot-id`/`--domain` fails with a clear
+error, because the placeholder `id`/`botId`/`validDomains` would be rejected by
+the Teams upload validator.
 
 ## Upload
 

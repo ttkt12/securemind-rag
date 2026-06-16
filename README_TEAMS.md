@@ -57,19 +57,22 @@ https://endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatfo
 (`GET /`, `POST /chat`, `GET /documents`), independent of whether the Teams
 integration is enabled.
 
-There are currently **two** Teams package folders. They are intentionally kept
-until the canonical one is confirmed — do not delete either yet:
+There are **two** Teams package folders with distinct roles:
 
-| Folder | Used by | Output zip |
+| Folder | Role | Output zip |
 | --- | --- | --- |
-| `teams/` | `scripts/package_teams_app.py` (its `DEFAULT_SOURCE`); run with no `--source` | `securemind-rag-teams-template.zip` |
-| `teams_app/` | a separately prepared package (newer `manifest.json`) | `securemind-rag-teams-app.zip` |
+| `teams_app/` | **Canonical**: pre-filled with this deployment's real bot ID and runtime domain. `package_teams_app.py` defaults to it. | `securemind-rag-teams-app.zip` |
+| `teams/` | Parametric template (placeholders). Build it with `--bot-id` and `--domain` to inject real values without editing files. | `securemind-rag-teams-app.zip` (override with `--output`) |
 
-> **Action needed (owner decision):** pick one folder as canonical. Because
-> `package_teams_app.py` defaults to `teams/`, build from `teams_app/` with
-> `python scripts/package_teams_app.py --source teams_app --output securemind-rag-teams-app.zip`,
-> or repoint `DEFAULT_SOURCE` to `teams_app` and retire `teams/`. This was left
-> unresolved during cleanup to avoid breaking the packaging script.
+The bare command now produces an uploadable package from `teams_app/`:
+
+```powershell
+python scripts/package_teams_app.py
+```
+
+The packager validates the manifest before zipping and fails with a clear
+message if `id`/`botId`/`validDomains` still contain placeholders — so a template
+built without real values will not silently produce a zip that Teams rejects.
 
 The Teams zip must contain these files at the root:
 
@@ -101,9 +104,9 @@ If `az` is missing, install Azure CLI first. If your tenant blocks app registrat
 
 Do not create paid Azure resources until the subscription, resource group, region, and permission model are confirmed.
 
-## Build The Template Package
+## Build The Package
 
-Create placeholder icons if needed, then run:
+Run the packager (defaults to the canonical `teams_app/` source):
 
 ```powershell
 python scripts/package_teams_app.py
@@ -112,7 +115,16 @@ python scripts/package_teams_app.py
 The output zip is:
 
 ```text
-securemind-rag-teams-template.zip
+securemind-rag-teams-app.zip
+```
+
+To build from the `teams/` template with real values injected at build time
+(without editing the template files):
+
+```powershell
+python scripts/package_teams_app.py --source teams `
+  --bot-id "<MICROSOFT_APP_ID>" `
+  --domain "endpoint-77ada21e-9fec-4ea0-96ff-f9f6e79fbe1a.agentbase-runtime.aiplatform.vngcloud.vn"
 ```
 
 ## Local Validation
