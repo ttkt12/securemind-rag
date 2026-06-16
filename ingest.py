@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from pathlib import Path
 from uuid import uuid4
 
@@ -69,34 +70,42 @@ def _is_excluded_path(path: Path) -> bool:
     return any(marker in lowered for marker in EXCLUDED_SOURCE_SUBSTRINGS)
 
 
+def _dedup_key(path: Path) -> str:
+    """Identity for true duplicate detection: the filename with device/copy
+    suffixes stripped, accent-folded, lowercased, and reduced to alphanumerics.
+    This collapses "...-Mac mini.pdf" and "Quy Trinh..." vs "QuyTrinh..." spacing
+    variants of the SAME document, while keeping different documents that merely
+    share a (reused) code number distinct."""
+    stem = Path(clean_source_filename(path.name)).stem
+    folded = unicodedata.normalize("NFD", stem.replace("đ", "d").replace("Đ", "D"))
+    folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", folded.lower())
+
+
 def collect_source_paths() -> list[Path]:
     """Select PDFs to ingest: drop excluded locations (e.g. Archives/) and
-    collapse duplicate copies of the same document by its code, keeping the
-    shallowest, shortest-named path. Dropped files are logged, never silent."""
+    collapse exact duplicate copies of the same document, keeping the shallowest,
+    shortest-named path. Dropped files are logged, never silent."""
     all_pdfs = sorted(PAPERS_DIR.rglob("*.pdf"))
     excluded = [p for p in all_pdfs if _is_excluded_path(p)]
     kept = [p for p in all_pdfs if not _is_excluded_path(p)]
 
-    by_code: dict[str, Path] = {}
-    no_code: list[Path] = []
+    by_identity: dict[str, Path] = {}
     dropped_duplicates: list[Path] = []
     for path in kept:
-        code = extract_document_code(path.name)
-        if not code:
-            no_code.append(path)
-            continue
-        current = by_code.get(code)
+        identity = _dedup_key(path) or str(path)
+        current = by_identity.get(identity)
         if current is None:
-            by_code[code] = path
+            by_identity[identity] = path
             continue
         better = min(current, path, key=lambda p: (len(p.parts), len(p.name)))
         dropped_duplicates.append(path if better == current else current)
-        by_code[code] = better
+        by_identity[identity] = better
 
-    selected = sorted(set(list(by_code.values()) + no_code))
+    selected = sorted(by_identity.values())
     print(
         f"PDF sources: {len(all_pdfs)} found | {len(excluded)} excluded | "
-        f"{len(dropped_duplicates)} duplicate-code copies dropped | {len(selected)} ingested."
+        f"{len(dropped_duplicates)} duplicate copies dropped | {len(selected)} ingested."
     )
     for path in dropped_duplicates:
         print(f"  duplicate dropped: {path}")
