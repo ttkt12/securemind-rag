@@ -6,6 +6,7 @@ import numpy as np
 from config import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
+    EXCLUDED_SOURCE_SUBSTRINGS,
     PAPERS_DIR,
     SEMANTIC_CHUNKING_ENABLED,
     SEMANTIC_CHUNK_MAX_CHARS,
@@ -15,7 +16,7 @@ from config import (
     make_embeddings,
 )
 from langchain_core.documents import Document
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from text_utils import clean_documents
@@ -63,18 +64,56 @@ def clean_source_filename(source: str) -> str:
     return f"{stem}{suffix}" if stem else source_name
 
 
+def _is_excluded_path(path: Path) -> bool:
+    lowered = str(path).lower()
+    return any(marker in lowered for marker in EXCLUDED_SOURCE_SUBSTRINGS)
+
+
+def collect_source_paths() -> list[Path]:
+    """Select PDFs to ingest: drop excluded locations (e.g. Archives/) and
+    collapse duplicate copies of the same document by its code, keeping the
+    shallowest, shortest-named path. Dropped files are logged, never silent."""
+    all_pdfs = sorted(PAPERS_DIR.rglob("*.pdf"))
+    excluded = [p for p in all_pdfs if _is_excluded_path(p)]
+    kept = [p for p in all_pdfs if not _is_excluded_path(p)]
+
+    by_code: dict[str, Path] = {}
+    no_code: list[Path] = []
+    dropped_duplicates: list[Path] = []
+    for path in kept:
+        code = extract_document_code(path.name)
+        if not code:
+            no_code.append(path)
+            continue
+        current = by_code.get(code)
+        if current is None:
+            by_code[code] = path
+            continue
+        better = min(current, path, key=lambda p: (len(p.parts), len(p.name)))
+        dropped_duplicates.append(path if better == current else current)
+        by_code[code] = better
+
+    selected = sorted(set(list(by_code.values()) + no_code))
+    print(
+        f"PDF sources: {len(all_pdfs)} found | {len(excluded)} excluded | "
+        f"{len(dropped_duplicates)} duplicate-code copies dropped | {len(selected)} ingested."
+    )
+    for path in dropped_duplicates:
+        print(f"  duplicate dropped: {path}")
+    return selected
+
+
 def load_documents():
     if not PAPERS_DIR.exists():
         raise FileNotFoundError(f"Cannot find papers folder: {PAPERS_DIR.resolve()}")
 
-    loader = DirectoryLoader(
-        path=str(PAPERS_DIR),
-        glob="**/*.pdf",
-        loader_cls=PyPDFLoader,
-        show_progress=True,
-        use_multithreading=True,
-    )
-    documents = loader.load()
+    paths = collect_source_paths()
+    if not paths:
+        raise RuntimeError(f"No PDF documents found in {PAPERS_DIR.resolve()}")
+
+    documents = []
+    for path in paths:
+        documents.extend(PyPDFLoader(str(path)).load())
 
     if not documents:
         raise RuntimeError(f"No PDF documents found in {PAPERS_DIR.resolve()}")
