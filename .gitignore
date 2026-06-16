@@ -34,4 +34,5 @@ test_questions.txt
 .vscode/
 .idea/
 .claude/
+greennode-agentbase-skills/
 _research/
