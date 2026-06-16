@@ -27,8 +27,11 @@ from pathlib import Path
 CATALOG_PATH = Path("document_catalog.json")
 
 # Code-like substrings inside free text: ZION-QT-04, QT-ZION-14, QT-04, TC-13...
+# Separators are hyphen/underscore only (not space): allowing a space let the
+# regex swallow a preceding word, e.g. "trong TC-13" matched as one candidate
+# "trong TC-13" which then failed to resolve.
 _CODE_CANDIDATE_RE = re.compile(
-    r"\b([A-Za-z]{2,5}(?:[-_ ][A-Za-z]{2,5})?[-_ ]\d{1,4})\b"
+    r"\b([A-Za-z]{2,5}(?:[-_][A-Za-z]{2,5})?[-_]\d{1,4})\b"
 )
 
 # Org token that may be dropped when matching shorthand codes.

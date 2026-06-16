@@ -4,10 +4,26 @@ from openai import OpenAI
 
 from catalog_metadata import build_metadata_answer, get_catalog_record
 from catalog_service import answer_catalog_count, answer_catalog_list
+from document_code_utils import find_code_candidates, resolve_code
 from document_evidence_metadata import answer_document_metadata_from_evidence
 from document_recommendation import build_document_recommendation
 from intent_router import detect_intent
 from rag_core import answer_question, load_vector_store, make_client
+
+
+def _last_document_code(history: list | None) -> str | None:
+    """Most recent resolvable document code mentioned in the conversation, used to
+    resolve follow-ups like "tài liệu này có mấy version" that omit the code."""
+    if not isinstance(history, list):
+        return None
+    for item in reversed(history[-8:]):
+        if not isinstance(item, dict):
+            continue
+        for raw in find_code_candidates(str(item.get("content") or "")):
+            code, _ = resolve_code(raw)
+            if code:
+                return code
+    return None
 
 
 def _debug_metadata(metadata: dict, intent: str, retrieval_used: bool, llm_used: bool) -> dict:
@@ -75,7 +91,7 @@ def answer_chat(
     # Document-specific metadata questions (document code + aspect). The catalog
     # is used ONLY to locate/disambiguate the document; the answer comes from
     # retrieved document evidence, never from auto-extracted catalog fields.
-    metadata_result = build_metadata_answer(question)
+    metadata_result = build_metadata_answer(question, fallback_code=_last_document_code(history))
     if metadata_result is not None:
         if metadata_result["kind"] == "clarify":
             meta = _debug_metadata(metadata_result["metadata"], "metadata", False, False)

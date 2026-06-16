@@ -43,6 +43,22 @@ ASPECT_TRIGGERS: list[tuple[str, list[str]]] = [
             "revision history",
             "lich su thay doi",
             "lich su phien ban",
+            # "list the versions" phrasings (the version_count answer lists them)
+            "cac phien ban",
+            "nhung phien ban",
+            "phien ban nao",
+            "cac version",
+            "nhung version",
+            "version nao",
+            "liet ke phien ban",
+            "liet ke cac phien ban",
+            "liet ke version",
+            "liet ke cac version",
+            "danh sach phien ban",
+            "danh sach version",
+            "list version",
+            "list all version",
+            "list the version",
         ],
     ),
     (
@@ -215,8 +231,12 @@ def resolve_metadata_request(question: str):
     return {"aspect": aspect, "code": resolved, "candidates": ambiguous}
 
 
-def build_metadata_answer(question: str):
+def build_metadata_answer(question: str, fallback_code: str | None = None):
     """Route a metadata question.
+
+    ``fallback_code`` is used when the question has a metadata aspect but no
+    explicit code — e.g. a follow-up like "tài liệu này có mấy version" where the
+    document was named earlier in the conversation.
 
     Returns one of:
       * ``None`` — not a metadata question (no aspect, or no usable code).
@@ -233,4 +253,6 @@ def build_metadata_answer(question: str):
         return {"kind": "evidence", "code": request["code"], "aspect": aspect}
     if request["candidates"]:
         return _clarify_payload(request["candidates"], aspect)
+    if fallback_code:
+        return {"kind": "evidence", "code": fallback_code, "aspect": aspect}
     return None

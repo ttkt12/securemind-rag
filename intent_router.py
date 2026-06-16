@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import re
 import unicodedata
+
+# A question naming a specific document code (ZION-QT-16) or asking about a
+# document's versions is about ONE document, not the whole knowledge base — it
+# must not be answered with a catalog-wide list/count.
+_DOCUMENT_CODE_RE = re.compile(r"\b(?:ZION|ISO|PCI)[-_ ]?[A-Z]{2,8}[-_ ]?\d{1,3}\b", re.IGNORECASE)
+_VERSION_TERMS = ("version", "phien ban")
 
 
 MOJIBAKE_REPLACEMENTS = {
@@ -161,8 +168,21 @@ def looks_like_mojibake_catalog_count(question: str) -> bool:
     return False
 
 
+def references_specific_document(question: str, variants: set[str]) -> bool:
+    """True when the question targets one specific document (by code) or asks
+    about a document's versions, so catalog-wide list/count must not fire."""
+    if _DOCUMENT_CODE_RE.search(question or ""):
+        return True
+    return any(term in variant for variant in variants for term in _VERSION_TERMS)
+
+
 def detect_intent(question: str, history: list | None = None) -> str:
     variants = normalized_variants(question)
+
+    # "List the versions of ZION-QT-16" / "how many versions does X have" are
+    # per-document questions; route them to metadata, not the catalog list/count.
+    if references_specific_document(question, variants):
+        return "rag_question"
 
     if contains_any(variants, CATALOG_LIST_TRIGGERS):
         return "catalog_list"
