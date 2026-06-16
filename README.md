@@ -5,7 +5,7 @@
 ### Trợ lý tri thức ISMS cho ZaloPay — Compliance / GRC
 
 Hỏi đáp **grounded** trên tài liệu bảo mật, chính sách, quy trình & tiêu chuẩn nội bộ.
-Câu trả lời **chỉ lấy từ tài liệu đã được lập chỉ mục** — kèm trích dẫn nguồn `[n]`, không bịa.
+Câu trả lời **chỉ lấy từ tài liệu đã được lập chỉ mục** — kèm trích dẫn nguồn `[n]`.
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![aiohttp](https://img.shields.io/badge/aiohttp-async%20server-2C5BB4)
