@@ -73,12 +73,18 @@ def _dedupe_key(document: dict) -> str:
     return f"title:{(document.get('title') or '').casefold()}"
 
 
-def load_document_catalog(path: Path = CATALOG_PATH) -> list[dict]:
+def _read_catalog_payload(path: Path = CATALOG_PATH):
     if not path.exists():
         return []
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return []
+
+
+def load_document_catalog(path: Path = CATALOG_PATH) -> list[dict]:
+    payload = _read_catalog_payload(path)
+    if not payload:
         return []
 
     documents = []
@@ -93,9 +99,38 @@ def load_document_catalog(path: Path = CATALOG_PATH) -> list[dict]:
     return documents
 
 
+# Vietnamese labels + display order for the document-type breakdown shown on the
+# intro screen. Unknown types fall back to a title-cased label, sorted last.
+_TYPE_LABELS = {
+    "policy": "Chính sách",
+    "procedure": "Quy trình",
+    "standard": "Tiêu chuẩn",
+    "record": "Hồ sơ",
+    "certificate": "Chứng nhận",
+}
+_TYPE_ORDER = ["policy", "procedure", "standard", "record", "certificate"]
+
+
+def catalog_type_breakdown() -> list[dict]:
+    """Count documents by ``document_type`` from the raw catalog, for the intro
+    overview (e.g. 25 standards, 13 procedures, ...)."""
+    counts: dict[str, int] = {}
+    for item in _extract_items(_read_catalog_payload()):
+        doc_type = str(item.get("document_type") or "other").strip().lower() or "other"
+        counts[doc_type] = counts.get(doc_type, 0) + 1
+    ordered = sorted(
+        counts.items(),
+        key=lambda kv: (_TYPE_ORDER.index(kv[0]) if kv[0] in _TYPE_ORDER else len(_TYPE_ORDER), kv[0]),
+    )
+    return [
+        {"type": doc_type, "label": _TYPE_LABELS.get(doc_type, doc_type.title()), "count": count}
+        for doc_type, count in ordered
+    ]
+
+
 def catalog_count_payload() -> dict:
     documents = load_document_catalog()
-    return {"total_documents": len(documents)}
+    return {"total_documents": len(documents), "by_type": catalog_type_breakdown()}
 
 
 def catalog_documents_payload() -> dict:

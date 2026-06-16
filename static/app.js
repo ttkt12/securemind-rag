@@ -13,6 +13,10 @@ const els = {
   documentCount: document.getElementById("document-count"),
   corpusNote: document.getElementById("corpus-note"),
   themeToggle: document.getElementById("theme-toggle"),
+  introScreen: document.getElementById("intro-screen"),
+  introEnter: document.getElementById("intro-enter"),
+  introStats: document.getElementById("intro-stats"),
+  introTotal: document.getElementById("intro-total"),
   newChat: document.getElementById("new-chat"),
   clearSessions: document.getElementById("clear-sessions"),
   sessionList: document.getElementById("session-list"),
@@ -538,6 +542,26 @@ function autoResize() {
 }
 
 /* ----------------------------------------------------------- networking */
+function renderOverview(payload) {
+  const total = Number(payload && payload.total_documents);
+  if (els.introTotal && Number.isFinite(total)) els.introTotal.textContent = String(total);
+  if (!els.introStats) return;
+  const byType = Array.isArray(payload && payload.by_type) ? payload.by_type : [];
+  els.introStats.replaceChildren();
+  byType.forEach((entry) => {
+    const card = document.createElement("div");
+    card.className = "intro-stat";
+    const num = document.createElement("span");
+    num.className = "intro-stat-num";
+    num.textContent = String(entry.count);
+    const label = document.createElement("span");
+    label.className = "intro-stat-label";
+    label.textContent = entry.label || entry.type || "";
+    card.append(num, label);
+    els.introStats.appendChild(card);
+  });
+}
+
 async function loadDocumentCount() {
   try {
     const response = await fetch("/documents/count", { headers: appHeaders() });
@@ -551,6 +575,7 @@ async function loadDocumentCount() {
     const total = Number(payload.total_documents);
     els.documentCount.textContent = Number.isFinite(total) ? String(total) : "--";
     els.corpusNote.textContent = "Cơ sở tri thức sẵn sàng.";
+    renderOverview(payload);
     if (!activeSession().messages.length) renderMessages();
   } catch (_error) {
     els.documentCount.textContent = "--";
@@ -755,8 +780,18 @@ els.themeToggle?.addEventListener("click", () => {
   localStorage.setItem(THEME_KEY, next);
 });
 
+/* ----------------------------------------------------------- intro */
+const INTRO_KEY = "grc-entered";
+function enterApp() {
+  if (els.introScreen) els.introScreen.hidden = true;
+  sessionStorage.setItem(INTRO_KEY, "1");
+  document.getElementById("question")?.focus();
+}
+els.introEnter?.addEventListener("click", enterApp);
+
 /* ----------------------------------------------------------- boot */
 initTheme();
+if (els.introScreen && sessionStorage.getItem(INTRO_KEY)) els.introScreen.hidden = true;
 loadSessions();
 updateAccessState();
 renderSessions();
