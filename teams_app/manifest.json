@@ -15,14 +15,14 @@
     "outline": "outline.png"
   },
   "name": {
-    "short": "SecureMind RAG",
-    "full": "SecureMind RAG"
+    "short": "GRC Copilot",
+    "full": "ZaloPay GRC Copilot"
   },
   "description": {
-    "short": "ISMS, security, compliance, policy, and governance chatbot.",
-    "full": "SecureMind RAG is a Teams chatbot for querying security, compliance, ISMS, policy, procedure, and governance documents."
+    "short": "ZaloPay Compliance / GRC knowledge assistant for ISMS and security.",
+    "full": "GRC Copilot is ZaloPay's Compliance / GRC knowledge assistant for querying security, compliance, ISMS, policy, procedure, and governance documents."
   },
-  "accentColor": "#2563EB",
+  "accentColor": "#0033C9",
   "bots": [
     {
       "botId": "16599541-6b2a-44d7-a6f5-439343562e8e",
