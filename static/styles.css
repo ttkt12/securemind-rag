@@ -1,7 +1,7 @@
 /* SecureMind RAG — premium internal ISMS knowledge workspace */
 
 :root {
-  /* ZaloPay-tinted light canvas */
+  /* Zalopay-tinted light canvas */
   --canvas: #f4f7fc;
   --canvas-grain: #eef3fb;
   --canvas-glass: rgba(244, 247, 252, 0.9);
@@ -15,7 +15,7 @@
   --ink-soft: #45526f;
   --ink-faint: #8591ab;
 
-  /* ZaloPay brand: blue primary + green secondary */
+  /* Zalopay brand: blue primary + green secondary */
   --accent: #0033c9;
   --accent-strong: #00259a;
   --accent-soft: #e7ecfb;
@@ -24,11 +24,11 @@
   --accent-2-strong: #00a857;
   --brand-gradient: linear-gradient(140deg, #00cf6a 0%, #0033c9 82%);
 
-  /* Warn (ZaloPay orange) */
+  /* Warn (Zalopay orange) */
   --warn-ink: #9a5800;
   --warn-soft: #fff3e0;
 
-  /* Deep ZaloPay-blue sidebar */
+  /* Deep Zalopay-blue sidebar */
   --rail: #061233;
   --rail-raised: #0d1f4d;
   --rail-border: rgba(255, 255, 255, 0.10);

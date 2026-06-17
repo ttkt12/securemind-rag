@@ -523,7 +523,7 @@ function renderEmptyState() {
 
   const copy = document.createElement("p");
   copy.textContent =
-    "Trợ lý tri thức GRC của ZaloPay. Tra cứu chính sách, quy trình, tiêu chuẩn bảo mật và tuân thủ — câu trả lời được trích dẫn từ tài liệu ISMS đã lập chỉ mục.";
+    "Trợ lý tri thức GRC của Zalopay. Tra cứu chính sách, quy trình, tiêu chuẩn bảo mật và tuân thủ — câu trả lời được trích dẫn từ tài liệu ISMS đã lập chỉ mục.";
 
   state.append(mark, heading, copy);
 
