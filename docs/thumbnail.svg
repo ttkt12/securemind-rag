@@ -27,10 +27,10 @@
 <rect x="592" y="120" width="96" height="96" rx="24" fill="url(#brand)"/>
 <text x="640" y="187" text-anchor="middle" font-size="54" font-weight="700" fill="#ffffff">Z</text>
 
-<text x="640" y="298" text-anchor="middle" font-size="22" letter-spacing="4" font-weight="500" fill="#3ddc97">ZaloPay  ·  Compliance / GRC</text>
+<text x="640" y="298" text-anchor="middle" font-size="22" letter-spacing="4" font-weight="500" fill="#3ddc97">Zalopay  ·  Compliance / GRC</text>
 <text x="640" y="396" text-anchor="middle" font-size="84" font-weight="700" fill="#ffffff">GRC Assistant</text>
-<text x="640" y="456" text-anchor="middle" font-size="31" fill="#b3c4e4">Trợ lý tri thức ISMS cho ZaloPay</text>
-<text x="640" y="506" text-anchor="middle" font-size="22" fill="#8a9cc0">Hỏi đáp grounded · trích dẫn nguồn · không bịa</text>
+<text x="640" y="456" text-anchor="middle" font-size="31" fill="#b3c4e4">Trợ lý tri thức ISMS cho Zalopay</text>
+<text x="640" y="506" text-anchor="middle" font-size="22" fill="#8a9cc0">Câu trả lời bám sát tài liệu · trích dẫn nguồn minh bạch · không suy diễn</text>
 
 <g font-size="21" font-weight="500">
   <rect x="271" y="566" width="230" height="54" rx="27" fill="#11244d" stroke="#2c4f95"/>
