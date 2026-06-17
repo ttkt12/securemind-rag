@@ -2,7 +2,7 @@
 
 # 🛡️ GRC Assistant
 
-### Trợ lý tri thức ISMS cho ZaloPay — Compliance / GRC
+### Trợ lý tri thức ISMS cho Zalopay — Compliance / GRC
 
 Hỏi đáp **grounded** trên tài liệu bảo mật, chính sách, quy trình & tiêu chuẩn nội bộ.
 Câu trả lời **chỉ lấy từ tài liệu đã được lập chỉ mục** — kèm trích dẫn nguồn `[n]`.
@@ -21,7 +21,7 @@ Câu trả lời **chỉ lấy từ tài liệu đã được lập chỉ mục*
 
 ## ✨ GRC Assistant là gì?
 
-GRC Assistant biến bộ tài liệu **ISMS** đã được duyệt của ZaloPay thành một trợ lý hỏi đáp có thể truy cập qua **Web**, **Microsoft Teams** và **CLI**. Mọi câu trả lời đều **trích dẫn trực tiếp từ tài liệu** đã lập chỉ mục — phù hợp cho môi trường tuân thủ, nơi câu trả lời sai/bịa là không chấp nhận được.
+GRC Assistant biến bộ tài liệu **ISMS** đã được duyệt của Zalopay thành một trợ lý hỏi đáp có thể truy cập qua **Web**, **Microsoft Teams** và **CLI**. Mọi câu trả lời đều **trích dẫn trực tiếp từ tài liệu** đã lập chỉ mục — phù hợp cho môi trường tuân thủ, nơi câu trả lời sai/bịa là không chấp nhận được.
 
 > **Triết lý:** tài liệu nằm ở nguồn đã duyệt → index dựng sẵn trước khi chạy → câu trả lời luôn dẫn nguồn → dịch vụ hosted không sync/ingest lúc khởi động.
 
@@ -35,7 +35,7 @@ GRC Assistant biến bộ tài liệu **ISMS** đã được duyệt của ZaloP
 | 🕓 | **Lịch sử phiên bản** — "ZION-QT-04 có mấy version" → liệt kê đúng từ bảng lịch sử trong tài liệu, dẫn đúng nguồn |
 | 🧹 | **Lọc nhiễu** — tự loại tài liệu `Archives/` cũ & bản trùng khỏi retrieval, chỉ giữ bộ ISMS Portal hiện hành |
 | 🛟 | **Fallback có ích** — không tìm thấy → gợi ý tài liệu liên quan thay vì "Không tìm thấy" cụt lủn |
-| 🎨 | **Web UI ZaloPay** — trang intro tổng quan + chat, light/dark mode, render markdown |
+| 🎨 | **Web UI Zalopay** — trang intro tổng quan + chat, light/dark mode, render markdown |
 | 💬 | **Teams bot** — trả lời **proactive** (ACK ngay + gửi đáp án sau) nên không bị drop khi LLM chậm |
 
 ## 🏗️ Kiến trúc
@@ -189,5 +189,5 @@ Xem thêm: [SECURITY.md](SECURITY.md)
 > **Demo nhanh:** `bash scripts/demo.sh` (macOS/Linux) hoặc `powershell -ExecutionPolicy Bypass -File scripts\demo.ps1` (Windows) → mở web UI + câu hỏi mẫu. Chi tiết: [DEMO.md](DEMO.md).
 
 <div align="center">
-<sub>Built for ZaloPay Compliance · GRC — grounded, cited, internal.</sub>
+<sub>Built for  Compliance · GRC — grounded, cited, internal.</sub>
 </div>
